@@ -1,0 +1,356 @@
+name: Contrôles TRUST AI
+
+# Vérifications automatiques à chaque poussée et sur chaque pull request.
+# AUCUN SECRET n'est utilisé : ni clé Supabase, ni identifiant Shopify, ni
+# variable d'environnement privée. Le build fonctionne sans aucune variable
+# (mode démonstration), et la base PostgreSQL du second job est créée puis
+# détruite dans le conteneur d'exécution — le projet Supabase réel n'est
+# JAMAIS contacté et aucune migration n'y est appliquée.
+#
+# Objectif : Farouk peut lire les résultats directement dans l'onglet
+# « Actions » de GitHub, sans terminal ni installation.
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  application:
+    name: Tests, lint et build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Récupérer le dépôt
+        uses: actions/checkout@v4
+
+      - name: Installer Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Installer les dépendances
+        run: npm ci
+
+      - name: Tests unitaires métier
+        run: npm run test
+
+      - name: Analyse statique (lint)
+        run: npm run lint
+
+      - name: Build de production
+        run: npm run build
+
+  base_de_donnees:
+    name: Migrations et sécurité PostgreSQL 16
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # Base d'intégration jetable, locale au conteneur d'exécution.
+      PGHOST: localhost
+      PGPORT: "5432"
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: trustai_ci
+
+    steps:
+      - name: Récupérer le dépôt
+        uses: actions/checkout@v4
+
+      - name: Installer le client PostgreSQL 16
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-16 || sudo apt-get install -y postgresql-client
+
+      - name: Préparer une base vierge (équivalent local de Supabase)
+        run: |
+          set -euo pipefail
+          psql -d postgres -v ON_ERROR_STOP=1 -c "drop database if exists $PGDATABASE"
+          psql -d postgres -v ON_ERROR_STOP=1 -c "create database $PGDATABASE"
+          psql -v ON_ERROR_STOP=1 <<'SQL'
+          -- Rôles et schéma auth : reproduction fidèle de l'environnement
+          -- Supabase (auth.uid() lit le jeton de session).
+          do $$ begin
+            if not exists (select 1 from pg_roles where rolname = 'anon')
+              then create role anon nologin; end if;
+            if not exists (select 1 from pg_roles where rolname = 'authenticated')
+              then create role authenticated nologin; end if;
+            if not exists (select 1 from pg_roles where rolname = 'service_role')
+              then create role service_role nologin bypassrls; end if;
+          end $$;
+          create schema auth;
+          create table auth.users (id uuid primary key, email text);
+          create function auth.uid() returns uuid language sql stable
+            as $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
+          grant usage on schema auth to anon, authenticated;
+          grant usage on schema public to anon, authenticated, service_role;
+          -- Supabase accorde automatiquement les droits sur toute NOUVELLE
+          -- table : c'est ce que la migration doit ensuite révoquer.
+          alter default privileges in schema public
+            grant all on tables to anon, authenticated, service_role;
+          alter default privileges in schema public
+            grant all on functions to anon, authenticated, service_role;
+          SQL
+
+      - name: Appliquer les migrations (1re fois)
+        run: |
+          set -euo pipefail
+          for f in supabase/migrations/*.sql; do
+            echo "== $f"
+            psql -v ON_ERROR_STOP=1 -q -f "$f"
+          done
+          psql -v ON_ERROR_STOP=1 -q -f supabase/seed.sql
+
+      - name: Empreinte du schéma après la 1re application
+        run: pg_dump --schema-only --no-owner "$PGDATABASE" | grep -v -E '^\\(restrict|unrestrict)' > /tmp/schema1.sql
+
+      - name: Appliquer une 2e fois les migrations REJOUABLES
+        # Toutes les migrations ne se rejouent pas : les migrations 1 à 8 ont
+        # été appliquées une seule fois, avant l'ouverture du projet, et
+        # créent leurs objets sans garde (« create table public.x »). Les
+        # migrations récentes, elles, sont explicitement conçues pour être
+        # collées deux fois sans dégât dans le SQL Editor : elles le
+        # DÉCLARENT dans leur en-tête avec le mot « rejouable ». C'est ce
+        # marqueur — et non une liste écrite à la main qui se périmerait —
+        # qui pilote ce contrôle.
+        run: |
+          set -euo pipefail
+          trouvee=0
+          for f in supabase/migrations/*.sql; do
+            if grep -qi 'rejouable' "$f"; then
+              echo "== rejeu : $f"
+              psql -v ON_ERROR_STOP=1 -q -f "$f"
+              trouvee=$((trouvee + 1))
+            fi
+          done
+          if [ "$trouvee" -lt 2 ]; then
+            echo "ÉCHEC : $trouvee migration(s) rejouable(s) trouvée(s), 2 attendues au minimum"
+            exit 1
+          fi
+
+      - name: Vérifier que le schéma est identique et sans doublon
+        run: |
+          set -euo pipefail
+          pg_dump --schema-only --no-owner "$PGDATABASE" | grep -v -E '^\\(restrict|unrestrict)' > /tmp/schema2.sql
+          if ! diff -q /tmp/schema1.sql /tmp/schema2.sql; then
+            echo "ÉCHEC : la double application modifie le schéma"
+            diff /tmp/schema1.sql /tmp/schema2.sql | head -40
+            exit 1
+          fi
+          echo "Schéma identique après double application."
+          psql -v ON_ERROR_STOP=1 -t <<'SQL'
+          do $$
+          declare v integer;
+          begin
+            select count(*) into v from (
+              select schemaname, tablename, policyname from pg_policies
+              where schemaname='public' group by 1,2,3 having count(*)>1) x;
+            if v > 0 then raise exception 'Politiques dupliquées : %', v; end if;
+            select count(*) into v from (
+              select conrelid, conname from pg_constraint group by 1,2 having count(*)>1) y;
+            if v > 0 then raise exception 'Contraintes dupliquées : %', v; end if;
+            select count(*) into v from (
+              select schemaname, tablename, indexname from pg_indexes
+              where schemaname='public' group by 1,2,3 having count(*)>1) z;
+            if v > 0 then raise exception 'Index dupliqués : %', v; end if;
+            select count(*) into v from (
+              select tgrelid, tgname from pg_trigger where not tgisinternal
+              group by 1,2 having count(*)>1) t;
+            if v > 0 then raise exception 'Déclencheurs dupliqués : %', v; end if;
+            raise notice 'Aucun doublon de politique, contrainte, index ou déclencheur.';
+          end $$;
+          SQL
+
+      - name: Vérifier le verrouillage des accès directs
+        run: |
+          set -euo pipefail
+          psql -v ON_ERROR_STOP=1 -t <<'SQL'
+          do $$
+          declare v integer;
+          begin
+            select count(*) into v from information_schema.role_table_grants
+            where table_schema='public' and grantee in ('anon','authenticated')
+              and table_name in (
+                'recap_sources','recap_reads','logistics_lines','logistics_line_events',
+                'delivery_jobs','delivery_allocations','skara_documents',
+                'skara_document_extractions','skara_document_corrections',
+                'match_candidates','logistics_anomalies','sync_events',
+                'sensitive_access_logs');
+            if v <> 0 then raise exception 'Droits directs restants : %', v; end if;
+
+            select count(*) into v from pg_class c
+            join pg_namespace n on n.oid = c.relnamespace
+            where n.nspname='public' and c.relrowsecurity and c.relname in (
+                'recap_sources','recap_reads','logistics_lines','logistics_line_events',
+                'delivery_jobs','delivery_allocations','skara_documents',
+                'skara_document_extractions','skara_document_corrections',
+                'match_candidates','logistics_anomalies','sync_events',
+                'sensitive_access_logs');
+            if v <> 13 then raise exception 'RLS active sur % tables au lieu de 13', v; end if;
+
+            select count(*) into v from information_schema.routine_privileges
+            where routine_schema='public' and grantee in ('anon','PUBLIC')
+              and routine_name in ('logistics_summary','set_variant_logistics',
+                                   'allocate_to_delivery_job','get_delivery_job');
+            if v <> 0 then raise exception 'Exécution ouverte à anon/PUBLIC : %', v; end if;
+
+            -- Les fonctions INTERNES (schéma app) ne sont appelables ni par
+            -- PUBLIC, ni par anon, ni par un utilisateur authentifié : elles
+            -- ne servent qu'aux RPC « security definer » et aux déclencheurs.
+            select count(*) into v from information_schema.routine_privileges
+            where routine_schema = 'app'
+              and grantee in ('anon','authenticated','PUBLIC')
+              and routine_name in ('org_of','payload_int','last_correction_int',
+                                   'forbid_update_delete','assert_same_org');
+            if v <> 0 then
+              raise exception 'Fonctions internes app.* encore exposées : %', v;
+            end if;
+            raise notice '13 tables verrouillées, RLS active, aucune RPC ni fonction interne ouverte.';
+          end $$;
+          SQL
+
+      - name: Tests de sécurité et de règles métier (RLS, isolation, immuabilité)
+        run: |
+          set -euo pipefail
+          psql -v ON_ERROR_STOP=1 -f supabase/tests/rls_policies.test.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/tests/phase1_logistique.test.sql
+
+      - name: Tests du récapitulatif Google Sheets (phase 2)
+        run: |
+          set -euo pipefail
+          psql -v ON_ERROR_STOP=1 -f supabase/tests/phase2_recap.test.sql
+
+      - name: Tests onglets multiples et chemins de sortie (phase 3)
+        run: |
+          set -euo pipefail
+          psql -v ON_ERROR_STOP=1 -f supabase/tests/phase3_multi_onglets.test.sql
+
+      - name: Test de concurrence (suraffectation impossible)
+        run: |
+          set -euo pipefail
+          psql -v ON_ERROR_STOP=1 -q <<'SQL'
+          insert into auth.users (id, email)
+            values ('c1000000-0000-4000-c000-000000000001','ci@test.local');
+          insert into public.profiles (id, organization_id, display_name, role)
+            values ('c1000000-0000-4000-c000-000000000001',
+                    '00000000-0000-4000-a000-000000000001',
+                    'Intégration continue','responsable_logistique');
+          insert into public.logistics_lines (
+            id, organization_id, origin, origin_reason, designation, quantity, stage)
+            values ('c2000000-0000-4000-c000-000000000001',
+                    '00000000-0000-4000-a000-000000000001','stock_local',
+                    'test concurrence','Article concurrent',4,'disponible');
+          insert into public.delivery_jobs (id, organization_id, reference, customer_name)
+            values ('c3000000-0000-4000-c000-000000000001',
+                    '00000000-0000-4000-a000-000000000001','LIV-CI-1','Client 1'),
+                   ('c3000000-0000-4000-c000-000000000002',
+                    '00000000-0000-4000-a000-000000000001','LIV-CI-2','Client 2');
+          SQL
+
+          cat > /tmp/c1.sql <<'SQL'
+          begin;
+          set role authenticated;
+          set local "request.jwt.claim.sub" = 'c1000000-0000-4000-c000-000000000001';
+          select public.allocate_to_delivery_job(
+            'c2000000-0000-4000-c000-000000000001',
+            'c3000000-0000-4000-c000-000000000001', 3);
+          select pg_sleep(2);
+          commit;
+          SQL
+          cat > /tmp/c2.sql <<'SQL'
+          begin;
+          set role authenticated;
+          set local "request.jwt.claim.sub" = 'c1000000-0000-4000-c000-000000000001';
+          select public.allocate_to_delivery_job(
+            'c2000000-0000-4000-c000-000000000001',
+            'c3000000-0000-4000-c000-000000000002', 3);
+          commit;
+          SQL
+
+          # Deux transactions simultanées demandent 3 unités sur une ligne de 4.
+          psql -q -f /tmp/c1.sql > /tmp/o1.txt 2>&1 &
+          sleep 0.3
+          psql -q -f /tmp/c2.sql > /tmp/o2.txt 2>&1 || true
+          wait
+          echo "--- session 1 ---"; cat /tmp/o1.txt
+          echo "--- session 2 ---"; cat /tmp/o2.txt
+          grep -q "Quantité indisponible" /tmp/o2.txt || {
+            echo "ÉCHEC : la seconde affectation aurait dû être refusée"; exit 1; }
+          psql -v ON_ERROR_STOP=1 -t <<'SQL'
+          do $$
+          declare v_sum integer; v_qty integer;
+          begin
+            select coalesce(sum(quantity_allocated),0) into v_sum
+            from public.delivery_allocations
+            where logistics_line_id = 'c2000000-0000-4000-c000-000000000001'
+              and status <> 'annulee';
+            select quantity into v_qty from public.logistics_lines
+            where id = 'c2000000-0000-4000-c000-000000000001';
+            if v_sum > v_qty then
+              raise exception 'ÉCHEC : % affectés pour une quantité de %', v_sum, v_qty;
+            end if;
+            raise notice 'Invariant respecté : % affecté(s) sur %.', v_sum, v_qty;
+          end $$;
+          SQL
+
+      - name: Vérifier le retour arrière
+        run: |
+          set -euo pipefail
+          # Le rollback refuse volontairement de s'exécuter si un profil porte
+          # encore un des deux nouveaux rôles (l'avertissement du fichier le
+          # précise). On applique donc d'abord la manœuvre documentée :
+          # réattribuer ces profils à un rôle d'origine.
+          psql -v ON_ERROR_STOP=1 -q -c \
+            "update public.profiles set role = 'logistique'
+             where role in ('responsable_logistique','livreur')"
+          # Les retours arrière se déroulent dans l'ordre inverse des
+          # migrations : la plus récente d'abord, le socle en dernier.
+          psql -v ON_ERROR_STOP=1 -q -f supabase/rollbacks/ROLLBACK_20260827001100_recap_multi_onglets.sql
+          psql -v ON_ERROR_STOP=1 -q -f supabase/rollbacks/ROLLBACK_20260820001000_recap_google_sheets.sql
+          psql -v ON_ERROR_STOP=1 -q -f supabase/rollbacks/ROLLBACK_20260819000900_socle_logistique.sql
+          psql -v ON_ERROR_STOP=1 -t <<'SQL'
+          do $$
+          declare v integer;
+          begin
+            select count(*) into v from information_schema.routines
+            where routine_schema='public' and routine_name in (
+              'get_recap_source','upsert_recap_source','sync_recap_rows',
+              'list_recap_sources','set_recap_source_active',
+              'list_logistics_lines','get_logistics_line');
+            if v <> 0 then raise exception 'Fonctions phases 2-3 restantes : %', v; end if;
+            select count(*) into v from information_schema.columns
+            where table_schema='public'
+              and ((table_name='logistics_lines'
+                    and column_name in ('exit_channel','exit_at','freight_ref'))
+                or (table_name='recap_sources' and column_name='client_carriers'));
+            if v <> 0 then raise exception 'Colonnes phase 3 restantes : %', v; end if;
+            select count(*) into v from information_schema.tables
+            where table_schema='public' and table_name in (
+              'recap_sources','recap_reads','logistics_lines','logistics_line_events',
+              'delivery_jobs','delivery_allocations','skara_documents',
+              'skara_document_extractions','skara_document_corrections',
+              'match_candidates','logistics_anomalies','sync_events',
+              'sensitive_access_logs');
+            if v <> 0 then raise exception 'Retour arrière incomplet : % table(s)', v; end if;
+            select count(*) into v from information_schema.tables where table_schema='public';
+            if v <> 22 then raise exception 'Tables métier attendues : 22, trouvées %', v; end if;
+            raise notice 'Retour arrière propre : 22 tables métier préservées.';
+          end $$;
+          SQL
