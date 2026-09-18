@@ -50,6 +50,32 @@ export type WebhookEventRegistration =
 export const STALE_AFTER_MS = 15 * 60 * 1000;
 
 /**
+ * Réponse à donner à Shopify pour un DOUBLON. Un 200 acquitte
+ * définitivement : réservé aux événements terminés (« traite ») ou
+ * volontairement ignorés. Un événement encore « recu » (traitement en cours,
+ * ou interrompu mais pas encore repris) reçoit un 409 : Shopify relivrera,
+ * et la relivraison le reprendra une fois le délai passé.
+ */
+export function duplicateResponse(status: WebhookEventStatus): {
+  httpStatus: 200 | 409;
+  body: Record<string, unknown>;
+} {
+  if (status === "traite" || status === "ignore") {
+    return { httpStatus: 200, body: { ok: true, duplicate: true, status } };
+  }
+  return {
+    httpStatus: 409,
+    body: {
+      ok: false,
+      duplicate: true,
+      status,
+      retry: true,
+      error: "Événement en cours de traitement : relivraison attendue.",
+    },
+  };
+}
+
+/**
  * Sous-ensemble du client Supabase utilisé ici (facilite les tests). Les
  * constructeurs PostgREST sont « thenables », pas des Promise : on ne
  * demande que `then`.

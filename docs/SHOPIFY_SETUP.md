@@ -204,10 +204,16 @@ retraitée sur la même ligne : c'est le but de la relivraison. La prise en
 charge est atomique (mise à jour conditionnelle) : si deux relivraisons
 arrivent en même temps, une seule retraite.
 
+Le **200** est réservé aux événements terminés (« traite ») ou ignorés. Une
+relivraison d'un événement encore « recu » reçoit un **409** : Shopify la
+considère comme non acquittée et relivrera (jusqu'à 19 fois sur 48 h).
+
 Une livraison restée « recu » parce que le serveur a été interrompu en plein
-traitement n'est pas bloquée pour autant : passé 15 minutes, la relivraison
+traitement n'est donc pas bloquée : passé 15 minutes, la relivraison
 suivante la reprend, une seule fois, sur la même ligne. Avant ce délai, elle
-est acquittée comme doublon, car le traitement peut encore être en cours.
+reçoit 409 sans traitement, car le premier traitement peut encore être en
+cours. Ce délai dépasse largement la durée maximale de la fonction
+(`maxDuration = 60` s) et le plafond absolu de Vercel (800 s).
 
 ## 6. Tester
 
