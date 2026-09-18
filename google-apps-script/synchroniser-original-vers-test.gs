@@ -22,7 +22,11 @@
  *       - si l'original porte déjà un ID TRUST sur la ligne, il est recopié
  *         tel quel ;
  *       - sinon, l'identifiant déjà attribué dans la copie TEST à une ligne de
- *         même contenu est conservé (empreinte de la ligne) ;
+ *         mêmes COLONNES CLÉS (date, fournisseur, référence, désignation,
+ *         quantité, client, ORDER) est conservé : les commentaires, réceptions
+ *         et statuts peuvent changer chaque jour sans toucher l'identifiant ;
+ *       - sinon, une ligne qui ne diffère que par UNE colonne clé d'une
+ *         ancienne ligne encore libre, sans ambiguïté, reprend son identifiant ;
  *       - sinon, un identifiant neuf est généré.
  *     Deux lignes strictement identiques reçoivent chacune leur identifiant,
  *     dans l'ordre du fichier ;
@@ -53,6 +57,21 @@ var SYNC_SHEETS = [
 
 /** Titre exact de la colonne d'identifiants (dans l'original ET la copie). */
 var SYNC_ID_HEADER = 'ID TRUST';
+
+/**
+ * Colonnes qui définissent l'IDENTITÉ d'une ligne (titre exact, ou lettre
+ * pour une colonne sans titre : « G » est la colonne client). Les autres
+ * colonnes — commentaires, réceptions, statuts, dates de livraison — vivent
+ * au quotidien et NE changent PAS l'identifiant.
+ *
+ * Une ligne dont UNE seule de ces colonnes change garde son identifiant si
+ * elle reste reconnaissable sans ambiguïté (voir reconcilierIdentifiants).
+ * Si deux colonnes clés changent d'un coup, c'est une autre ligne.
+ */
+var SYNC_KEY_COLUMNS = [
+  'DATE DU RECAP', 'NOM DU FOURNISSEUR', 'REF FOURNISSEUR ARTICLES',
+  'MARCHANDISES', 'QUANTITE', 'G', 'ORDER',
+];
 
 /** Préfixe des identifiants générés (identique au script id-trust.gs). */
 var SYNC_ID_PREFIX = 'TR-';
@@ -147,11 +166,15 @@ function synchroniserOnglet(original, copie, conf) {
     valeurs[headerRow - 1][idColCible] = SYNC_ID_HEADER;
   }
 
-  // --- Identifiants : recopiés, conservés, ou générés --------------------
+  // --- Identifiants : recopiés, conservés, rapprochés ou générés ---------
+  var cles = colonnesCles(valeurs[headerRow - 1], SYNC_KEY_COLUMNS, idColCible);
+  var clesAnciennes = idColAncien === -1
+    ? []
+    : colonnesCles(anciennes[headerRow - 1], SYNC_KEY_COLUMNS, idColAncien);
   var resultat = reconcilierIdentifiants(
     anciennes.slice(headerRow), idColAncien,
     valeurs.slice(headerRow), idColCible,
-    genererIdentifiantSynchro
+    genererIdentifiantSynchro, cles, clesAnciennes
   );
   for (var i = 0; i < resultat.ids.length; i++) {
     valeurs[headerRow + i][idColCible] = resultat.ids[i];
@@ -170,6 +193,7 @@ function synchroniserOnglet(original, copie, conf) {
     lignes: valeurs.length - headerRow,
     recopies: resultat.recopies,
     conserves: resultat.conserves,
+    rapproches: resultat.rapproches,
     generes: resultat.generes,
   };
 }
@@ -196,79 +220,183 @@ function ligneVide(row, idCol) {
   return true;
 }
 
+/** Valeur d'une cellule normalisée (dates → AAAA-MM-JJ, texte → minuscules). */
+function normaliserCellule(v) {
+  if (Object.prototype.toString.call(v) === '[object Date]' && !isNaN(v.getTime())) {
+    return v.getFullYear() + '-' +
+      ('0' + (v.getMonth() + 1)).slice(-2) + '-' +
+      ('0' + v.getDate()).slice(-2);
+  }
+  return String(v).trim().toLowerCase();
+}
+
+/** Lettre(s) de colonne pour un index base 0 : 0 → A, 26 → AA. */
+function lettreColonne(index) {
+  var s = '';
+  var n = index + 1;
+  while (n > 0) {
+    var r = (n - 1) % 26;
+    s = String.fromCharCode(65 + r) + s;
+    n = Math.floor((n - 1) / 26);
+  }
+  return s;
+}
+
 /**
- * Empreinte d'une ligne : toutes ses cellules sauf la colonne ID, normalisées.
- * Les dates sont ramenées à AAAA-MM-JJ pour que Date et texte se rejoignent.
+ * Index (base 0) des colonnes clés, retrouvées par TITRE ou par LETTRE.
+ * Renvoie [] si aucune n'est trouvée : l'empreinte porte alors sur toute la
+ * ligne (hors ID), comportement de repli.
  */
-function calculerEmpreinte(row, idCol) {
+function colonnesCles(entetes, titres, idCol) {
+  var out = [];
+  for (var t = 0; t < titres.length; t++) {
+    var idx = trouverColonne(entetes, titres[t]);
+    if (idx === -1) {
+      for (var c = 0; c < entetes.length; c++) {
+        if (lettreColonne(c) === String(titres[t]).trim().toUpperCase()) { idx = c; break; }
+      }
+    }
+    if (idx !== -1 && idx !== idCol && out.indexOf(idx) === -1) out.push(idx);
+  }
+  return out;
+}
+
+/** Valeurs clés d'une ligne (ou toute la ligne hors ID si `cles` est vide). */
+function valeursCles(row, idCol, cles) {
   var parts = [];
+  if (cles && cles.length) {
+    for (var k = 0; k < cles.length; k++) {
+      parts.push(cles[k] < row.length ? normaliserCellule(row[cles[k]]) : '');
+    }
+    return parts;
+  }
   for (var c = 0; c < row.length; c++) {
     if (c === idCol) continue;
-    var v = row[c];
-    if (Object.prototype.toString.call(v) === '[object Date]' && !isNaN(v.getTime())) {
-      v = v.getFullYear() + '-' +
-        ('0' + (v.getMonth() + 1)).slice(-2) + '-' +
-        ('0' + v.getDate()).slice(-2);
-    }
-    parts.push(String(v).trim().toLowerCase());
+    parts.push(normaliserCellule(row[c]));
   }
-  // Les colonnes vides en fin de ligne ne changent pas l'empreinte.
   while (parts.length && parts[parts.length - 1] === '') parts.pop();
-  return parts.join('');
+  return parts;
+}
+
+/**
+ * Empreinte d'une ligne : ses colonnes clés normalisées (toute la ligne hors
+ * ID si aucune colonne clé n'est connue).
+ */
+function calculerEmpreinte(row, idCol, cles) {
+  return valeursCles(row, idCol, cles).join('\u001f');
 }
 
 /**
  * Attribue un identifiant à chaque ligne de `nouvelles` (lignes de DONNÉES,
- * sans les titres) :
- *   1. l'identifiant présent dans l'original est recopié tel quel (sauf s'il
- *      est déjà pris par une ligne précédente : doublon de copier-coller) ;
- *   2. sinon, l'identifiant qu'avait dans la copie TEST une ligne de même
- *      empreinte est conservé (chaque ancien identifiant ne sert qu'une fois) ;
- *   3. sinon, `generer()` fournit un identifiant neuf.
- * Une ligne entièrement vide n'a pas d'identifiant.
+ * sans les titres), en quatre passes, dans l'ordre du fichier :
+ *
+ *   1. RECOPIE — l'identifiant présent dans l'original est repris tel quel
+ *      (sauf s'il est déjà pris par une ligne précédente : copier-coller) ;
+ *   2. CONSERVATION — même empreinte (colonnes clés) qu'une ligne de la copie
+ *      TEST : son identifiant est repris. Chaque ancien identifiant ne sert
+ *      qu'une fois ; deux lignes identiques sont servies dans l'ordre ;
+ *   3. RAPPROCHEMENT — une ligne encore sans identifiant qui ne diffère
+ *      d'une ancienne ligne encore libre que par UNE colonne clé reprend son
+ *      identifiant, à condition que le rapprochement soit sans ambiguïté
+ *      (un seul candidat à la plus courte distance de position). Dans le
+ *      doute, on ne devine pas ;
+ *   4. GÉNÉRATION — sinon, `generer()` fournit un identifiant neuf.
+ *
+ * Une ligne entièrement vide n'a pas d'identifiant. Une ligne modifiée sur
+ * deux colonnes clés ou plus est une ligne NOUVELLE : c'est la limite d'une
+ * identification par contenu, seul un identifiant écrit à la source la
+ * lèverait.
  */
-function reconcilierIdentifiants(anciennes, idColAncien, nouvelles, idColNouveau, generer) {
-  var parEmpreinte = {};
+function reconcilierIdentifiants(anciennes, idColAncien, nouvelles, idColNouveau, generer, cles, clesAnciennes) {
+  if (!clesAnciennes) clesAnciennes = cles;
+  var pris = {};
+  var ids = new Array(nouvelles.length);
+  var recopies = 0, conserves = 0, rapproches = 0, generes = 0;
+
+  // Anciennes lignes porteuses d'un identifiant, encore « libres ».
+  var libres = [];
   if (idColAncien !== -1) {
     for (var a = 0; a < anciennes.length; a++) {
       var ancienId = String(anciennes[a][idColAncien] || '').trim();
       if (ancienId === '' || ligneVide(anciennes[a], idColAncien)) continue;
-      var e = calculerEmpreinte(anciennes[a], idColAncien);
-      if (!parEmpreinte[e]) parEmpreinte[e] = [];
-      parEmpreinte[e].push(ancienId);
+      libres.push({
+        id: ancienId, position: a,
+        cles: valeursCles(anciennes[a], idColAncien, clesAnciennes),
+        pris: false,
+      });
     }
   }
 
-  var ids = [];
-  var pris = {};
-  var recopies = 0, conserves = 0, generes = 0;
-
-  for (var n = 0; n < nouvelles.length; n++) {
-    var row = nouvelles[n];
-    if (ligneVide(row, idColNouveau)) { ids.push(''); continue; }
-
-    var id = String(row[idColNouveau] || '').trim();
+  // Passe 1 — recopie des identifiants de l'original.
+  var n;
+  for (n = 0; n < nouvelles.length; n++) {
+    if (ligneVide(nouvelles[n], idColNouveau)) { ids[n] = ''; continue; }
+    var id = String(nouvelles[n][idColNouveau] || '').trim();
     if (id !== '' && !pris[id]) {
-      recopies++;
-    } else {
-      id = '';
-      var empreinte = calculerEmpreinte(row, idColNouveau);
-      var candidats = parEmpreinte[empreinte] || [];
-      while (candidats.length && !id) {
-        var c = candidats.shift();
-        if (!pris[c]) id = c;
-      }
-      if (id !== '') {
-        conserves++;
-      } else {
-        id = generer();
-        generes++;
+      ids[n] = id; pris[id] = true; recopies++;
+      for (var l = 0; l < libres.length; l++) {
+        if (libres[l].id === id) libres[l].pris = true;
       }
     }
-    pris[id] = true;
-    ids.push(id);
   }
-  return { ids: ids, recopies: recopies, conserves: conserves, generes: generes };
+
+  // Passe 2 — même empreinte.
+  var parEmpreinte = {};
+  for (var f = 0; f < libres.length; f++) {
+    if (libres[f].pris) continue;
+    var e = libres[f].cles.join('\u001f');
+    if (!parEmpreinte[e]) parEmpreinte[e] = [];
+    parEmpreinte[e].push(libres[f]);
+  }
+  for (n = 0; n < nouvelles.length; n++) {
+    if (ids[n] !== undefined) continue;
+    var empreinte = valeursCles(nouvelles[n], idColNouveau, cles).join('\u001f');
+    var file = parEmpreinte[empreinte] || [];
+    while (file.length) {
+      var cand = file.shift();
+      if (cand.pris || pris[cand.id]) continue;
+      ids[n] = cand.id; pris[cand.id] = true; cand.pris = true; conserves++;
+      break;
+    }
+  }
+
+  // Passe 3 — rapprochement à une colonne clé près, sans ambiguïté.
+  var nbCles = cles && cles.length ? cles.length : 0;
+  if (nbCles >= 2) {
+    for (n = 0; n < nouvelles.length; n++) {
+      if (ids[n] !== undefined) continue;
+      var vk = valeursCles(nouvelles[n], idColNouveau, cles);
+      var meilleur = null, meilleureDistance = Infinity, exaequo = false;
+      for (var m = 0; m < libres.length; m++) {
+        var cand2 = libres[m];
+        if (cand2.pris || pris[cand2.id] || cand2.cles.length !== nbCles) continue;
+        var diff = 0;
+        for (var k = 0; k < nbCles; k++) if (cand2.cles[k] !== vk[k]) diff++;
+        if (diff !== 1) continue;
+        var distance = Math.abs(cand2.position - n);
+        if (distance < meilleureDistance) {
+          meilleur = cand2; meilleureDistance = distance; exaequo = false;
+        } else if (distance === meilleureDistance) {
+          exaequo = true;
+        }
+      }
+      if (meilleur && !exaequo) {
+        ids[n] = meilleur.id; pris[meilleur.id] = true; meilleur.pris = true; rapproches++;
+      }
+    }
+  }
+
+  // Passe 4 — génération.
+  for (n = 0; n < nouvelles.length; n++) {
+    if (ids[n] !== undefined) continue;
+    var neuf = generer();
+    ids[n] = neuf; pris[neuf] = true; generes++;
+  }
+
+  return {
+    ids: ids, recopies: recopies, conserves: conserves,
+    rapproches: rapproches, generes: generes,
+  };
 }
 
 /** Identifiant unique, court et lisible : TR- + horodatage + aléa. */
@@ -287,14 +415,14 @@ function journaliser(copie, rapport) {
   var feuille = copie.getSheetByName(SYNC_LOG_SHEET);
   if (!feuille) {
     feuille = copie.insertSheet(SYNC_LOG_SHEET);
-    feuille.appendRow(['Date', 'Onglet', 'Lignes', 'ID recopiés', 'ID conservés', 'ID générés', 'Erreur']);
+    feuille.appendRow(['Date', 'Onglet', 'Lignes', 'ID recopiés', 'ID conservés', 'ID rapprochés', 'ID générés', 'Erreur']);
   }
   var maintenant = new Date();
   for (var i = 0; i < rapport.length; i++) {
     var r = rapport[i];
     feuille.appendRow([
       maintenant, r.onglet, r.lignes || 0, r.recopies || 0,
-      r.conserves || 0, r.generes || 0, r.erreur || '',
+      r.conserves || 0, r.rapproches || 0, r.generes || 0, r.erreur || '',
     ]);
   }
   // On garde les 500 dernières lignes de journal.

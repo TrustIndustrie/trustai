@@ -48,30 +48,54 @@ TRUST AI reconnaît une ligne d'une lecture à l'autre grâce à la colonne
 `ID TRUST`. Avec la copie TEST, cette colonne est gérée **dans la copie**, par
 le script de synchronisation. Aucun script n'est nécessaire dans l'original.
 
-À chaque synchronisation, pour chaque ligne :
+**Une empreinte ne garantit pas une identité.** Sans identifiant écrit à la
+source, le script ne peut que *reconnaître* une ligne à son contenu. Il le
+fait avec des règles explicites, dans cet ordre, à chaque synchronisation :
 
-1. si l'original porte déjà un `ID TRUST` (ancien script `id-trust.gs`
-   installé avant cette règle), il est recopié tel quel ;
-2. sinon, l'identifiant que la copie TEST avait attribué à une ligne de **même
-   contenu** est conservé, même si la ligne a été déplacée ou triée ;
-3. sinon, un identifiant neuf est généré.
+1. **Recopie** : si l'original porte déjà un `ID TRUST` (ancien script
+   `id-trust.gs`), il est repris tel quel. Un identifiant dupliqué par
+   copier-coller n'est repris qu'une fois.
+2. **Conservation** : une ligne dont les **colonnes clés** sont identiques à
+   une ligne de la copie TEST reprend son identifiant. Les colonnes clés sont
+   `DATE DU RECAP`, `NOM DU FOURNISSEUR`, `REF FOURNISSEUR ARTICLES`,
+   `MARCHANDISES`, `QUANTITE`, la colonne client (`G`) et `ORDER`
+   (liste `SYNC_KEY_COLUMNS` en haut du script). Tout le reste, commentaires,
+   réceptions, statuts, dates de livraison, **vit au quotidien sans changer
+   l'identifiant**.
+3. **Rapprochement** : une ligne qui ne diffère que par **une** colonne clé
+   d'une ancienne ligne encore libre (quantité corrigée, faute de frappe dans
+   la désignation…) reprend son identifiant, à condition qu'il n'y ait qu'un
+   seul candidat plausible. Dans le doute, le script ne devine pas.
+4. **Génération** : sinon, identifiant neuf.
 
-Deux lignes strictement identiques reçoivent chacune leur identifiant, dans
-l'ordre du fichier. Une ligne **modifiée** (désignation corrigée, quantité
-changée…) est vue comme une ligne nouvelle : elle reçoit un identifiant neuf,
-et TRUST AI signale l'ancienne comme « absente du fichier » plutôt que de la
-supprimer. C'est la limite de l'identification par contenu, et le prix de ne
-rien écrire dans l'original.
+Ce que cela donne concrètement :
 
-Si un jour l'équipe accepte une colonne technique dans l'original, le script
-`id-trust.gs` (une écriture, dans cette seule colonne) rend les identifiants
-stables même en cas de modification ; le script de synchronisation les
-recopie alors sans rien changer.
+| Geste dans l'original | Effet sur l'identifiant |
+|---|---|
+| Commentaire, réception, statut, date de livraison modifiés | conservé |
+| Tri, déplacement d'une ligne | conservé |
+| Insertion d'une ligne | la nouvelle reçoit un identifiant, les autres gardent le leur |
+| Suppression d'une ligne | les autres gardent le leur ; TRUST AI signale la ligne absente, ne la supprime pas |
+| Une colonne clé corrigée | conservé si le rapprochement est sans ambiguïté |
+| Deux colonnes clés ou plus modifiées | **ligne nouvelle** : ancien identifiant orphelin, l'ancienne ligne est signalée absente |
+| Lignes strictement identiques | chacune garde son identifiant, dans l'ordre du fichier ; si l'une disparaît, c'est la dernière qui est libérée |
 
-L'onglet **SYNCHRO** de la copie TEST journalise chaque passage : nombre de
-lignes, identifiants recopiés, conservés, générés. Un nombre élevé
+La dernière ligne du tableau est la limite réelle : deux lignes identiques ne
+sont distinguables que par leur ordre. Seule une colonne technique écrite
+**dans l'original** (script `id-trust.gs`, une écriture dans cette seule
+colonne) lève cette limite. Si l'équipe l'accepte un jour, le script de
+synchronisation recopiera ces identifiants sans rien changer d'autre.
+
+L'onglet **SYNCHRO** de la copie TEST journalise chaque passage : lignes,
+identifiants recopiés, conservés, rapprochés, générés. Un nombre élevé
 d'identifiants *générés* à chaque passage signale un problème (colonne
-`ID TRUST` supprimée dans la copie, onglet renommé…).
+`ID TRUST` supprimée dans la copie, onglet renommé, colonnes clés
+introuvables).
+
+Ces règles sont prouvées par `src/lib/recap/apps-script.test.ts`, qui exécute
+la logique du script dans un bac à sable : modification de champ vivant,
+modification d'une ou deux colonnes clés, tri, insertion, suppression, lignes
+identiques, rapprochement ambigu.
 
 ---
 
