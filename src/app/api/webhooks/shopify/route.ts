@@ -16,6 +16,11 @@ import {
   upsertOrder,
   upsertProduct,
 } from "@/lib/shopify/sync";
+import {
+  duplicateResponse,
+  registerWebhookEvent,
+  type WebhookEventsClient,
+} from "@/lib/shopify/webhook-events";
 
 /**
  * Réception des webhooks Shopify — conforme au parcours 2026
@@ -28,8 +33,15 @@ import {
  *  3. X-Shopify-Shop-Domain doit correspondre exactement à
  *     SHOPIFY_STORE_DOMAIN — on ne fait jamais confiance aux données
  *     d'identité du payload ;
- *  4. X-Shopify-Webhook-Id assure l'idempotence : une re-livraison du même
- *     événement est acquittée (200) sans retraitement ;
+ *  4. X-Shopify-Webhook-Id assure l'idempotence : l'INSERTION dans le
+ *     journal est la garde (index unique), pas une lecture préalable — deux
+ *     livraisons simultanées ne peuvent pas passer toutes les deux. Une
+ *     relivraison d'un événement TERMINÉ ou ignoré est acquittée (200)
+ *     sans retraitement ni nouvelle ligne de journal ; une relivraison
+ *     d'un événement encore « recu » reçoit 409 (Shopify relivrera) ; une
+ *     événement dont le traitement avait ÉCHOUÉ, ou resté « recu » après
+ *     une interruption du serveur, est PRISE EN CHARGE atomiquement par un
+ *     seul appel et retraitée sur la même ligne ;
  *  5. les écritures utilisent la clé serveur Supabase, jamais exposée au
  *     navigateur ; aucun secret n'apparaît dans les réponses ni les logs.
  *
@@ -39,6 +51,14 @@ import {
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+/**
+ * Durée maximale explicite (secondes). Au-delà, Vercel interrompt la
+ * fonction et la ligne de journal reste « recu » : STALE_AFTER_MS (15 min)
+ * est très supérieur à cette valeur ET au plafond absolu de Vercel
+ * (800 s avec Fluid Compute), donc une reprise ne peut jamais doubler un
+ * traitement encore en cours.
+ */
+export const maxDuration = 60;
 
 const SUPPORTED_TOPICS = new Set([
   "orders/create",
@@ -98,31 +118,25 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Corps JSON invalide." }, { status: 400 });
   }
 
-  // 4. Idempotence : re-livraison du même événement → acquittement direct.
-  if (webhookId) {
-    const { data: duplicate } = await supabase
-      .from("shopify_webhook_events")
-      .select("id, status")
-      .eq("webhook_id", webhookId)
-      .maybeSingle();
-    if (duplicate) {
-      return NextResponse.json({ ok: true, duplicate: true });
-    }
+  // 4. Idempotence + journalisation en UNE écriture : l'index unique sur
+  //    webhook_id tranche entre première livraison, doublon et reprise.
+  // Le client Supabase est typé de façon très générique ; on ne lui demande
+  // ici que les trois appels décrits par WebhookEventsClient.
+  const registration = await registerWebhookEvent(supabase as unknown as WebhookEventsClient, {
+    topic,
+    webhookId,
+    shopifyId: payload.id !== undefined ? String(payload.id) : null,
+    payload,
+    supported: SUPPORTED_TOPICS.has(topic),
+  });
+  if (registration.kind === "doublon") {
+    // 200 seulement si l'événement est TERMINÉ ou ignoré ; sinon 409 pour
+    // que Shopify relivre tant que le traitement n'est pas achevé.
+    const response = duplicateResponse(registration.status);
+    return NextResponse.json(response.body, { status: response.httpStatus });
   }
-
-  // Journalisation de l'événement (traçabilité/débogage).
-  const { data: eventRow } = await supabase
-    .from("shopify_webhook_events")
-    .insert({
-      topic,
-      webhook_id: webhookId,
-      shopify_id: payload.id !== undefined ? String(payload.id) : null,
-      payload,
-      status: SUPPORTED_TOPICS.has(topic) ? "recu" : "ignore",
-    })
-    .select("id")
-    .single();
-  const eventId = (eventRow as { id: string } | null)?.id;
+  const eventId = registration.eventId ?? undefined;
+  const retry = registration.kind === "reprise" ? registration.reason : undefined;
 
   if (!SUPPORTED_TOPICS.has(topic)) {
     // Sujet non géré : accusé de réception pour éviter les re-livraisons.
@@ -142,10 +156,10 @@ export async function POST(request: Request) {
     if (eventId) {
       await supabase
         .from("shopify_webhook_events")
-        .update({ status: "traite", processed_at: new Date().toISOString() })
+        .update({ status: "traite", error: null, processed_at: new Date().toISOString() })
         .eq("id", eventId);
     }
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, retried: retry });
   } catch (error) {
     if (eventId) {
       await supabase
