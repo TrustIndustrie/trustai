@@ -12,6 +12,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { formatDate, formatDateTime } from "@/lib/format";
 import { exitChannelLabels, logisticsStageLabels } from "@/lib/labels";
 import type {
+  LogisticsAnomaly,
   ExitChannel,
   LogisticsLineDetail,
   LogisticsLineRow,
@@ -424,7 +425,15 @@ export default function LogisticsLinesPage() {
       )}
 
       {detail?.line ? (
-        <LineDetail detail={detail} onClose={() => setDetail(null)} />
+        <LineDetail
+          detail={detail}
+          onClose={() => setDetail(null)}
+          onChanged={() => {
+            const id = String((detail.line as Record<string, unknown> | null)?.id ?? "");
+            if (id) void openDetail(id);
+            void load();
+          }}
+        />
       ) : null}
     </div>
   );
@@ -433,12 +442,16 @@ export default function LogisticsLinesPage() {
 function LineDetail({
   detail,
   onClose,
+  onChanged,
 }: {
   detail: LogisticsLineDetail;
   onClose: () => void;
+  onChanged: () => void;
 }) {
   const line = detail.line as Record<string, string | number | null>;
   const raw = (line.raw_row ?? {}) as unknown as Record<string, string>;
+  const { profile } = useSession();
+  const canDecide = profile !== null && hasPermission(profile.role, "valider_decision");
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
@@ -497,17 +510,20 @@ function LineDetail({
         {detail.anomalies.length === 0 ? (
           <p className="mt-1 text-sm" style={{ color: "var(--muted)" }}>Aucune anomalie.</p>
         ) : (
-          <ul className="mt-2 flex flex-col gap-2 text-sm">
-            {detail.anomalies.map((anomaly, i) => (
-              <li key={i}>
-                <Badge tone={anomaly.resolved_at ? "neutral" : "warning"}>
-                  {String(anomaly.type).replace(/_/g, " ")}
-                </Badge>{" "}
-                {String(anomaly.message)}
-              </li>
+          <ul className="mt-2 flex flex-col gap-3 text-sm">
+            {detail.anomalies.map((anomaly) => (
+              <AnomalyCard
+                key={anomaly.id}
+                anomaly={anomaly}
+                canDecide={canDecide}
+                onChanged={onChanged}
+              />
             ))}
           </ul>
         )}
+        {canDecide ? (
+          <ReportAnomalyForm lineId={String(line.id)} onChanged={onChanged} />
+        ) : null}
 
         <h3 className="mt-5 text-sm font-semibold">Ligne source (audit)</h3>
         <dl className="mt-2 grid grid-cols-1 gap-1 text-xs sm:grid-cols-2">
@@ -519,6 +535,205 @@ function LineDetail({
           ))}
         </dl>
       </div>
+    </div>
+  );
+}
+
+const RESOLUTION_LABELS: Record<string, string> = {
+  traitee: "Traitée",
+  ignoree: "Ignorée",
+  disparue: "Cause disparue du fichier",
+};
+
+const DECISION_LABELS: Record<string, string> = {
+  resolution: "Décision",
+  reouverture: "Réouverture",
+  fermeture_automatique: "Fermeture automatique (synchronisation)",
+  signalement: "Signalement",
+};
+
+/**
+ * Une anomalie et son parcours : recalculée depuis le fichier ou signalée à
+ * la main, ouverte ou résolue, avec l'historique des décisions. Seul un rôle
+ * qui détient « valider_decision » voit les boutons — la règle est rejouée
+ * côté serveur.
+ */
+function AnomalyCard({
+  anomaly,
+  canDecide,
+  onChanged,
+}: {
+  anomaly: LogisticsAnomaly;
+  canDecide: boolean;
+  onChanged: () => void;
+}) {
+  const { resolveAnomaly, reopenAnomaly } = useData();
+  const { notify } = useToast();
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const open = !anomaly.resolved_at;
+
+  const act = async (run: () => Promise<unknown>, success: string) => {
+    if (note.trim().length < 3) {
+      notify("Indiquez un motif (3 caractères minimum).", "error");
+      return;
+    }
+    setBusy(true);
+    try {
+      await run();
+      notify(success, "success");
+      setNote("");
+      onChanged();
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "Action impossible.", "error");
+    }
+    setBusy(false);
+  };
+
+  const tone = !open ? "neutral" : anomaly.severity === "bloquant" ? "danger" : "warning";
+
+  return (
+    <li className="rounded-md border p-3" style={{ borderColor: "var(--border)" }}>
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge tone={tone}>{anomaly.type.replace(/_/g, " ")}</Badge>
+        <span className="text-xs" style={{ color: "var(--muted)" }}>
+          {anomaly.origin === "manuelle" ? "signalée à la main" : "recalculée depuis le fichier"}
+          {" · "}
+          {anomaly.severity}
+        </span>
+      </div>
+      <p className="mt-1">{anomaly.message}</p>
+
+      {!open ? (
+        <p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>
+          {RESOLUTION_LABELS[String(anomaly.resolution)] ?? anomaly.resolution}
+          {anomaly.resolved_at ? ` le ${formatDateTime(String(anomaly.resolved_at))}` : ""}
+          {anomaly.resolved_by_label ? ` par ${anomaly.resolved_by_label}` : ""}
+          {anomaly.resolution_note ? ` — ${anomaly.resolution_note}` : ""}
+        </p>
+      ) : null}
+
+      {anomaly.decisions.length > 0 ? (
+        <button
+          type="button"
+          className="mt-1 text-xs underline"
+          onClick={() => setShowHistory((v) => !v)}
+        >
+          {showHistory ? "Masquer l\u2019historique" : `Historique (${anomaly.decisions.length})`}
+        </button>
+      ) : null}
+      {showHistory ? (
+        <ul className="mt-1 flex flex-col gap-1 text-xs" style={{ color: "var(--muted)" }}>
+          {anomaly.decisions.map((d) => (
+            <li key={d.id}>
+              {formatDateTime(d.decided_at)} · {DECISION_LABELS[d.action] ?? d.action}
+              {d.resolution ? ` (${RESOLUTION_LABELS[d.resolution] ?? d.resolution})` : ""}
+              {d.decided_by_label ? ` · ${d.decided_by_label}` : ""}
+              {d.note ? ` — ${d.note}` : ""}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+
+      {canDecide ? (
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <input
+            className="input min-w-[12rem] flex-1 text-sm"
+            placeholder="Motif de la décision (obligatoire)"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            disabled={busy}
+            aria-label="Motif"
+          />
+          {open ? (
+            <>
+              <button
+                type="button"
+                className="btn-primary"
+                disabled={busy}
+                onClick={() =>
+                  act(() => resolveAnomaly(anomaly.id, "traitee", note), "Anomalie traitée.")
+                }
+              >
+                Traitée
+              </button>
+              <button
+                type="button"
+                className="btn-secondary"
+                disabled={busy}
+                onClick={() =>
+                  act(() => resolveAnomaly(anomaly.id, "ignoree", note), "Anomalie ignorée.")
+                }
+              >
+                Ignorer
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              className="btn-secondary"
+              disabled={busy}
+              onClick={() => act(() => reopenAnomaly(anomaly.id, note), "Anomalie rouverte.")}
+            >
+              Rouvrir
+            </button>
+          )}
+        </div>
+      ) : null}
+    </li>
+  );
+}
+
+/** Signalement manuel : la synchronisation ne le fermera jamais. */
+function ReportAnomalyForm({ lineId, onChanged }: { lineId: string; onChanged: () => void }) {
+  const { reportAnomaly } = useData();
+  const { notify } = useToast();
+  const [message, setMessage] = useState("");
+  const [severity, setSeverity] = useState<LogisticsAnomaly["severity"]>("avertissement");
+  const [busy, setBusy] = useState(false);
+
+  const submit = async () => {
+    if (message.trim().length < 3) {
+      notify("Décrivez le problème (3 caractères minimum).", "error");
+      return;
+    }
+    setBusy(true);
+    try {
+      await reportAnomaly(lineId, severity, message);
+      notify("Anomalie signalée.", "success");
+      setMessage("");
+      onChanged();
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "Signalement impossible.", "error");
+    }
+    setBusy(false);
+  };
+
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+      <select
+        className="input text-sm"
+        value={severity}
+        onChange={(e) => setSeverity(e.target.value as LogisticsAnomaly["severity"])}
+        disabled={busy}
+        aria-label="Gravité"
+      >
+        <option value="info">Info</option>
+        <option value="avertissement">Avertissement</option>
+        <option value="bloquant">Bloquant</option>
+      </select>
+      <input
+        className="input min-w-[12rem] flex-1 text-sm"
+        placeholder="Signaler une anomalie sur cette ligne"
+        value={message}
+        onChange={(e) => setMessage(e.target.value)}
+        disabled={busy}
+        aria-label="Description du signalement"
+      />
+      <button type="button" className="btn-secondary" disabled={busy} onClick={() => void submit()}>
+        Signaler
+      </button>
     </div>
   );
 }

@@ -9,6 +9,7 @@ import type {
   DeliveryStatus,
   FulfillmentMode,
   LogisticsLineDetail,
+  LogisticsAnomaly,
   LogisticsLineFilters,
   LogisticsLinePage,
   LogisticsLineRow,
@@ -674,6 +675,46 @@ export class SupabaseRepository {
     });
     throwAsBusiness(error);
     return (data ?? { line: null, events: [], anomalies: [] }) as LogisticsLineDetail;
+  }
+
+  /** Décision humaine sur une anomalie (permission « valider_decision »). */
+  async resolveAnomaly(
+    anomalyId: string,
+    resolution: "traitee" | "ignoree",
+    note: string,
+  ): Promise<LogisticsAnomaly> {
+    const { data, error } = await this.supabase.rpc("resolve_logistics_anomaly", {
+      p_anomaly_id: anomalyId,
+      p_resolution: resolution,
+      p_note: note,
+    });
+    throwAsBusiness(error);
+    return data as LogisticsAnomaly;
+  }
+
+  /** Réouverture motivée d'une anomalie résolue. */
+  async reopenAnomaly(anomalyId: string, note: string): Promise<LogisticsAnomaly> {
+    const { data, error } = await this.supabase.rpc("reopen_logistics_anomaly", {
+      p_anomaly_id: anomalyId,
+      p_note: note,
+    });
+    throwAsBusiness(error);
+    return data as LogisticsAnomaly;
+  }
+
+  /** Signalement manuel : jamais fermé par la synchronisation. */
+  async reportAnomaly(
+    lineId: string,
+    severity: "info" | "avertissement" | "bloquant",
+    message: string,
+  ): Promise<LogisticsAnomaly> {
+    const { data, error } = await this.supabase.rpc("report_logistics_anomaly", {
+      p_line_id: lineId,
+      p_severity: severity,
+      p_message: message,
+    });
+    throwAsBusiness(error);
+    return data as LogisticsAnomaly;
   }
 
   /** Référentiel logistique d'une variante (validation côté serveur). */
