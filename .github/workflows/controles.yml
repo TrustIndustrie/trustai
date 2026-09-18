@@ -242,6 +242,11 @@ jobs:
           set -euo pipefail
           psql -v ON_ERROR_STOP=1 -f supabase/tests/phase3_multi_onglets.test.sql
 
+      - name: Tests des contrôles d'affectation (phase 4)
+        run: |
+          set -euo pipefail
+          psql -v ON_ERROR_STOP=1 -f supabase/tests/phase4_affectation.test.sql
+
       - name: Test de concurrence (suraffectation impossible)
         run: |
           set -euo pipefail

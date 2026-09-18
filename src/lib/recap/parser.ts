@@ -473,19 +473,29 @@ export function parseRecapRows(
     const receivedAubagne = recAubFlag === true || Boolean(recAubDate);
     const freight = cellOf(cells, "freight_label");
 
+    // DÉFAUT D — un événement n'est créé QUE si une date réelle existe.
+    // Le repli « date du jour » produisait une date neuve à chaque lecture :
+    // la déduplication portant sur (ligne, type, date), une ligne sans date
+    // gagnait un événement de plus TOUS LES JOURS.
     if (receivedArgenteuil && argenteuil) {
-      events.push({
-        event_type: "reception_argenteuil",
-        occurred_on: recArgDate ?? recapDate ?? expectedAt ?? todayIso(),
-        warehouse_id: argenteuil.id,
-      });
+      pushDated(events, "reception_argenteuil", recArgDate ?? recapDate, argenteuil.id);
+      if (!recArgDate && !recapDate) {
+        anomalies.push({
+          type: "reception_sans_date",
+          severity: "info",
+          message: "Réception à Argenteuil signalée sans aucune date : l'événement n'est pas daté, complétez le fichier.",
+        });
+      }
     }
     if (receivedAubagne && aubagne) {
-      events.push({
-        event_type: "reception_aubagne",
-        occurred_on: recAubDate ?? recapDate ?? expectedAt ?? todayIso(),
-        warehouse_id: aubagne.id,
-      });
+      pushDated(events, "reception_aubagne", recAubDate ?? recapDate, aubagne.id);
+      if (!recAubDate && !recapDate) {
+        anomalies.push({
+          type: "reception_sans_date",
+          severity: "info",
+          message: "Réception à Aubagne signalée sans aucune date : l'événement n'est pas daté, complétez le fichier.",
+        });
+      }
     }
     if (receivedArgenteuil && receivedAubagne && recArgDate && recAubDate && recAubDate < recArgDate) {
       anomalies.push({
@@ -581,16 +591,29 @@ export function parseRecapRows(
     }
 
     // --- Réception partielle : jamais disponible en totalité --------------
+    // DÉFAUTS A et B — `detectPartial` renvoyait un NOMBRE, et `if (partial)`
+    // traitait 0 comme faux : « partiel 0/4 » passait donc pour complet. De
+    // même, « partiel » sur une ligne de quantité 1 ne renvoyait rien. Le
+    // résultat est maintenant un OBJET : sa seule présence signale que la
+    // ligne est incomplète, que la quantité reçue soit connue ou non.
     const partial = detectPartial(comments, cellOf(cells, "status_label"), quantity);
     if (partial) {
       anomalies.push({
         type: "reception_partielle",
         severity: "avertissement",
-        message: `Réception partielle signalée (${partial} sur ${quantity}) : la ligne reste incomplète.`,
+        message:
+          partial.received === undefined
+            ? `Réception partielle signalée sur ${quantity} article(s), sans précision : la ligne reste incomplète.`
+            : `Réception partielle signalée (${partial.received} sur ${quantity}) : la ligne reste incomplète.`,
       });
     }
 
     // --- Étape courante ---------------------------------------------------
+    // DÉFAUT C — une anomalie BLOQUANTE (typiquement : commande annulée alors
+    // que la marchandise est déjà reçue) interdit d'annoncer la ligne comme
+    // disponible. La ligne n'est pas fermée pour autant — la décision F tient,
+    // c'est un humain qui tranche — mais elle sort du stock annonçable.
+    const blocked = anomalies.some((a) => a.severity === "bloquant");
     const statusLabel = cellOf(cells, "status_label");
     let stage: string;
     let currentWarehouse: WarehouseRef | undefined;
@@ -598,33 +621,30 @@ export function parseRecapRows(
     if (exit) {
       stage = "sortie";
       currentWarehouse = exit.warehouse ?? destination;
-      events.push({
-        event_type: "sortie",
-        occurred_on: exit.date ?? recAubDate ?? recArgDate ?? recapDate ?? todayIso(),
-        warehouse_id: currentWarehouse?.id,
-        notes: channelLabel(exit.channel),
-      });
+      pushDated(
+        events, "sortie",
+        exit.date ?? recAubDate ?? recArgDate ?? recapDate,
+        currentWarehouse?.id, channelLabel(exit.channel),
+      );
     } else if (partial) {
       // Une partie seulement est arrivée : on reste au stade réception.
       stage = receivedAubagne ? "recue_aubagne" : receivedArgenteuil ? "recue_argenteuil" : "attendue";
       currentWarehouse = receivedAubagne ? aubagne : receivedArgenteuil ? argenteuil : undefined;
     } else if (receivedAubagne) {
-      stage = "disponible";
+      stage = blocked ? "recue_aubagne" : "disponible";
       currentWarehouse = aubagne;
     } else if (receivedArgenteuil) {
       // Reçue à Argenteuil mais attendue à Aubagne → transfert à faire.
       const needsTransfer = Boolean(destination && aubagne && destination.id === aubagne.id);
-      stage = needsTransfer ? "en_transfert" : "disponible";
+      stage = needsTransfer ? "en_transfert" : blocked ? "recue_argenteuil" : "disponible";
       currentWarehouse = argenteuil;
       if (needsTransfer) {
-        events.push({
-          event_type: "depart_transfert",
-          occurred_on: recArgDate ?? recapDate ?? todayIso(),
-          warehouse_id: argenteuil?.id,
-          notes: freight
+        pushDated(
+          events, "depart_transfert", recArgDate ?? recapDate, argenteuil?.id,
+          freight
             ? `Transfert Argenteuil → Aubagne, affrètement ${freight}.`
             : "Transfert Argenteuil → Aubagne déduit du récapitulatif.",
-        });
+        );
       }
     } else if (statusLabel && /command/i.test(statusLabel)) {
       stage = "commandee";
@@ -635,11 +655,7 @@ export function parseRecapRows(
     }
 
     if (stage === "disponible" && !partial) {
-      events.push({
-        event_type: "mise_a_disposition",
-        occurred_on: recAubDate ?? recArgDate ?? todayIso(),
-        warehouse_id: currentWarehouse?.id,
-      });
+      pushDated(events, "mise_a_disposition", recAubDate ?? recArgDate, currentWarehouse?.id);
     }
     if (expectedAt) {
       events.push({ event_type: "arrivee_prevue", occurred_on: expectedAt });
@@ -711,8 +727,22 @@ export function channelLabel(channel: ExitChannel): string {
   }
 }
 
-function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
+/**
+ * Ajoute un événement UNIQUEMENT s'il porte une date réelle.
+ *
+ * Un événement sans date n'a pas de sens dans un historique, et lui en
+ * inventer une (la date du jour) le recréait à chaque synchronisation :
+ * la déduplication porte sur (ligne, type, date).
+ */
+function pushDated(
+  events: ParsedEvent[],
+  event_type: ParsedEvent["event_type"],
+  occurred_on: string | undefined,
+  warehouse_id?: string,
+  notes?: string,
+): void {
+  if (!occurred_on) return;
+  events.push({ event_type, occurred_on, warehouse_id, notes });
 }
 
 function emptyIgnored(
@@ -734,22 +764,44 @@ function emptyIgnored(
   };
 }
 
-/** Quantité partielle mentionnée dans les commentaires ou le statut. */
-function detectPartial(
+/** Réception incomplète. `received` n'est renseigné que si le fichier le dit. */
+export interface PartialReception {
+  received?: number;
+}
+
+/**
+ * Réception partielle mentionnée dans les commentaires ou le statut.
+ *
+ * Renvoie `undefined` quand la ligne est complète, et un OBJET dès qu'elle
+ * est incomplète — y compris pour « 0 sur 4 » et pour une ligne de quantité 1.
+ *
+ * Un rapport « n/m » ne vaut partiel que si le mot « partiel » l'accompagne
+ * ou si le dénominateur est bien la quantité de la ligne : sans cette garde,
+ * une date écrite « 04/2026 » dans un commentaire serait lue comme « 4 sur
+ * 2026 ».
+ */
+export function detectPartial(
   comments: string | undefined,
   status: string | undefined,
   quantity: number,
-): number | undefined {
+): PartialReception | undefined {
   const haystack = `${comments ?? ""} ${status ?? ""}`;
-  if (!/partiel/i.test(haystack)) {
-    // « 2/4 reçus » signale aussi une réception partielle.
-    const ratio = haystack.match(/(\d+)\s*\/\s*(\d+)/);
-    if (ratio && Number(ratio[1]) < Number(ratio[2])) return Number(ratio[1]);
-    return undefined;
-  }
+  const mentionsPartial = /partiel/i.test(haystack);
+
   const ratio = haystack.match(/(\d+)\s*(?:\/|sur)\s*(\d+)/i);
-  if (ratio && Number(ratio[1]) < Number(ratio[2])) return Number(ratio[1]);
+  if (ratio) {
+    const received = Number(ratio[1]);
+    const total = Number(ratio[2]);
+    if (received < total && (mentionsPartial || total === quantity)) {
+      return { received };
+    }
+  }
+
+  if (!mentionsPartial) return undefined;
+
   const single = haystack.match(/(\d+)/);
-  if (single && Number(single[1]) < quantity) return Number(single[1]);
-  return quantity > 1 ? quantity - 1 : undefined;
+  if (single && Number(single[1]) < quantity) return { received: Number(single[1]) };
+
+  // « partiel » sans chiffre exploitable : incomplète, quantité inconnue.
+  return {};
 }
