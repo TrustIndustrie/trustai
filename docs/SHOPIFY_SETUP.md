@@ -193,6 +193,47 @@ abonnements créés par l'application dont on utilise les identifiants. Ceux
 d'une autre application, ou créés à la main dans *Paramètres →
 Notifications*, ne s'y voient pas : les consulter dans l'admin Shopify.
 
+### Basculer les abonnements d'un ancien déploiement vers le nouveau
+
+Quand les abonnements pointent encore vers un ancien TRUST AI (visible dans
+`other`), on ne crée pas de doublons : on **modifie** chaque abonnement pour
+qu'il pointe vers la nouvelle adresse. Même identifiant, même sujet, aucune
+création ni suppression, donc jamais de double livraison pendant
+l'opération. Réservé au rôle administrateur.
+
+1. **Simulation** (rien n'est changé) :
+
+   ```
+   POST /api/shopify/webhooks
+   { "action": "retarget",
+     "from": "https://ancien.vercel.app/api/webhooks/shopify" }
+   ```
+
+   `to` est facultatif : par défaut, l'adresse publique de l'application qui
+   répond. La réponse liste le `plan` (sujets et identifiants concernés) et
+   le `rollback` prêt à l'emploi.
+2. **Bascule** : le même appel avec `"dryRun": false`. `updated` confirme
+   chaque abonnement modifié ; Shopify renvoie l'adresse appliquée, qui est
+   vérifiée.
+3. **Retour arrière** : le même appel avec les adresses de `rollback`
+   (`from` = nouvelle, `to` = ancienne) et `"dryRun": false`.
+
+En cas de refus de Shopify en cours de route, l'opération s'arrête et le
+message indique exactement quels sujets ont déjà été basculés, à rebasculer
+si l'on renonce. Les abonnements qui pointent déjà vers la cible, ou
+ailleurs, ne sont jamais touchés.
+
+Depuis la console du navigateur, connecté en administrateur :
+
+```js
+await (await fetch("/api/shopify/webhooks", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ action: "retarget",
+    from: "https://ancien.vercel.app/api/webhooks/shopify" }),
+})).json();
+```
+
 ### Livraisons en double
 
 Shopify peut livrer un même événement plusieurs fois, parfois simultanément.
