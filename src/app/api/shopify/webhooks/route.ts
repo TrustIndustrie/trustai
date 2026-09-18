@@ -4,13 +4,18 @@ import { isShopifyAdminConfigured } from "@/lib/shopify/config";
 import { ShopifyConfigError } from "@/lib/shopify/auth";
 import {
   ensureSubscriptions,
-  listSubscriptionStatus,
+  listVisibleSubscriptions,
+  statusFromVisible,
 } from "@/lib/shopify/webhooks";
 
 /**
  * Gestion des abonnements webhooks Shopify (API Admin GraphQL).
  *
- * - GET : liste l'état des 4 abonnements requis (existants / manquants) ;
+ * - GET : liste l'état des 4 abonnements requis (existants / manquants) ET
+ *   tous les abonnements visibles par l'application, avec leur adresse —
+ *   pour repérer ceux qui pointent encore vers un ancien déploiement.
+ *   Aucun secret : sujets, types de point de terminaison et adresses de
+ *   rappel uniquement ;
  * - POST : crée UNIQUEMENT les abonnements manquants (aucun doublon).
  *
  * Autorisation vérifiée côté serveur : permission « administrer ».
@@ -51,8 +56,19 @@ export async function GET(request: Request) {
   if (blocked) return blocked;
   const callbackUrl = callbackUrlFrom(request);
   try {
-    const subscriptions = await listSubscriptionStatus(callbackUrl);
-    return NextResponse.json({ ok: true, callbackUrl, subscriptions });
+    const visible = await listVisibleSubscriptions(callbackUrl);
+    const subscriptions = statusFromVisible(visible, callbackUrl);
+    return NextResponse.json({
+      ok: true,
+      callbackUrl,
+      subscriptions,
+      // Tous les abonnements de l'application, adresse comprise. Ceux dont
+      // `current` est false pointent ailleurs (ancien déploiement, autre
+      // environnement) : à examiner avant tout nettoyage.
+      visible,
+      visibleCount: visible.length,
+      other: visible.filter((s) => !s.current),
+    });
   } catch (error) {
     const message =
       error instanceof ShopifyConfigError || error instanceof Error

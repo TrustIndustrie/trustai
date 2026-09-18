@@ -173,6 +173,35 @@ protégées** (nom, e-mail, téléphone, adresse). Sans cette étape, Shopify
 « administrateur » peut lister ou créer les abonnements, et rien n'est
 créé automatiquement au chargement d'une page.)
 
+### Voir TOUS les abonnements, y compris ceux d'un ancien déploiement
+
+La même vérification, en lecture seule, est accessible directement :
+`GET /api/shopify/webhooks` (ouvrir l'adresse dans le navigateur, connecté
+en administrateur). La réponse contient :
+
+* `subscriptions` : l'état des 4 sujets requis **vers l'adresse de cette
+  application** ;
+* `visible` : **tous** les abonnements que Shopify montre à l'application,
+  avec sujet, type de point de terminaison et adresse de rappel ;
+  `current` vaut `false` pour ceux qui pointent ailleurs ;
+* `other` : le sous-ensemble qui pointe ailleurs (ancien TRUST AI, autre
+  environnement). Rien n'y est supprimé : c'est à examiner avant tout
+  nettoyage.
+
+Aucun secret n'est renvoyé. **Limite Shopify** : l'API ne liste que les
+abonnements créés par l'application dont on utilise les identifiants. Ceux
+d'une autre application, ou créés à la main dans *Paramètres →
+Notifications*, ne s'y voient pas : les consulter dans l'admin Shopify.
+
+### Livraisons en double
+
+Shopify peut livrer un même événement plusieurs fois, parfois simultanément.
+L'insertion dans le journal `shopify_webhook_events` sert de garde grâce à
+l'index unique sur `webhook_id` : une seule livraison passe, l'autre est
+acquittée comme doublon sans retraitement ni nouvelle ligne de journal. Une
+relivraison d'un événement dont le traitement avait **échoué** est, elle,
+retraitée sur la même ligne : c'est le but de la relivraison.
+
 ## 6. Tester
 
 1. **Catalogue** : page Catalogue → « Synchroniser depuis Shopify » → ton

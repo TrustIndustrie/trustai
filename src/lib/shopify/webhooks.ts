@@ -25,11 +25,30 @@ export interface SubscriptionStatus {
   callbackUrl?: string;
 }
 
+/**
+ * Un abonnement tel que Shopify le renvoie, sans rien de secret : le sujet,
+ * le type de point de terminaison et, pour un point HTTP, son adresse.
+ *
+ * Limite Shopify : l'API Admin ne renvoie que les abonnements créés par
+ * l'APPLICATION dont on utilise les identifiants. Ceux d'une autre
+ * application, ou créés à la main dans Paramètres → Notifications, restent
+ * invisibles ici.
+ */
+export interface VisibleSubscription {
+  id: string;
+  topic: string;
+  endpointType: string;
+  callbackUrl?: string;
+  /** true si l'adresse est celle de CETTE application. */
+  current: boolean;
+}
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 const LIST_QUERY = `
-  query TrustAiWebhookSubscriptions {
-    webhookSubscriptions(first: 50) {
+  query TrustAiWebhookSubscriptions($after: String) {
+    webhookSubscriptions(first: 50, after: $after) {
+      pageInfo { hasNextPage endCursor }
       edges {
         node {
           id
@@ -58,17 +77,50 @@ const CREATE_MUTATION = `
   }
 `;
 
+/**
+ * TOUS les abonnements visibles par l'application, toutes pages confondues,
+ * avec leur adresse. Lecture seule.
+ */
+export async function listVisibleSubscriptions(
+  callbackUrl: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<VisibleSubscription[]> {
+  const out: VisibleSubscription[] = [];
+  let after: string | null = null;
+  // Garde-fou : jamais plus de 20 pages (1 000 abonnements).
+  for (let page = 0; page < 20; page++) {
+    const data: any = await shopifyGraphQL<any>(LIST_QUERY, { after }, fetchImpl);
+    const connection: any = data.webhookSubscriptions ?? {};
+    for (const edge of connection.edges ?? []) {
+      const node = edge.node ?? {};
+      const url: string | undefined = node.endpoint?.callbackUrl ?? undefined;
+      out.push({
+        id: String(node.id ?? ""),
+        topic: String(node.topic ?? ""),
+        endpointType: String(node.endpoint?.__typename ?? "inconnu"),
+        callbackUrl: url,
+        current: url === callbackUrl,
+      });
+    }
+    if (!connection.pageInfo?.hasNextPage || !connection.pageInfo?.endCursor) break;
+    after = connection.pageInfo.endCursor;
+  }
+  return out;
+}
+
 /** État des abonnements requis, comparé à l'URL publique de l'application. */
 export async function listSubscriptionStatus(
   callbackUrl: string,
   fetchImpl: typeof fetch = fetch,
 ): Promise<SubscriptionStatus[]> {
-  const data = await shopifyGraphQL<any>(LIST_QUERY, {}, fetchImpl);
-  const existing: { topic: string; callbackUrl?: string }[] =
-    (data.webhookSubscriptions?.edges ?? []).map((edge: any) => ({
-      topic: edge.node.topic,
-      callbackUrl: edge.node.endpoint?.callbackUrl,
-    }));
+  return statusFromVisible(await listVisibleSubscriptions(callbackUrl, fetchImpl), callbackUrl);
+}
+
+/** Même calcul, à partir d'une liste déjà lue (évite une seconde lecture). */
+export function statusFromVisible(
+  existing: VisibleSubscription[],
+  callbackUrl: string,
+): SubscriptionStatus[] {
   return REQUIRED_TOPICS.map((topic) => {
     const match = existing.find(
       (e) => e.topic === topic && e.callbackUrl === callbackUrl,
