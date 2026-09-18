@@ -335,6 +335,7 @@ jobs:
              where role in ('responsable_logistique','livreur')"
           # Les retours arrière se déroulent dans l'ordre inverse des
           # migrations : la plus récente d'abord, le socle en dernier.
+          psql -v ON_ERROR_STOP=1 -q -f supabase/rollbacks/ROLLBACK_20260918001300_resolution_anomalies.sql
           psql -v ON_ERROR_STOP=1 -q -f supabase/rollbacks/ROLLBACK_20260827001100_recap_multi_onglets.sql
           psql -v ON_ERROR_STOP=1 -q -f supabase/rollbacks/ROLLBACK_20260820001000_recap_google_sheets.sql
           psql -v ON_ERROR_STOP=1 -q -f supabase/rollbacks/ROLLBACK_20260819000900_socle_logistique.sql
@@ -346,8 +347,13 @@ jobs:
             where routine_schema='public' and routine_name in (
               'get_recap_source','upsert_recap_source','sync_recap_rows',
               'list_recap_sources','set_recap_source_active',
-              'list_logistics_lines','get_logistics_line');
-            if v <> 0 then raise exception 'Fonctions phases 2-3 restantes : %', v; end if;
+              'list_logistics_lines','get_logistics_line',
+              'resolve_logistics_anomaly','reopen_logistics_anomaly',
+              'report_logistics_anomaly','get_logistics_anomaly');
+            if v <> 0 then raise exception 'Fonctions phases 2-5 restantes : %', v; end if;
+            select count(*) into v from information_schema.tables
+            where table_schema='public' and table_name = 'logistics_anomaly_decisions';
+            if v <> 0 then raise exception 'Historique des décisions (migration 13) restant'; end if;
             select count(*) into v from information_schema.columns
             where table_schema='public'
               and ((table_name='logistics_lines'
