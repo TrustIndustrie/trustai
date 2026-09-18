@@ -21,6 +21,11 @@
  *
  * Installation : voir docs/RECAP_GOOGLE_SHEETS.md (tout se fait dans le
  * navigateur, sans terminal).
+ *
+ * FACULTATIF depuis la mise en place de la copie TEST (docs/COPIE_TEST.md) :
+ * la règle « aucune écriture dans l'original » est alors respectée en
+ * n'installant PAS ce script ; les identifiants sont gérés dans la copie par
+ * synchroniser-original-vers-test.gs.
  */
 
 /**
@@ -53,19 +58,34 @@ function onChangeTrustIds(e) {
   remplirIdentifiantsTrust();
 }
 
-/** Remplissage manuel, depuis le menu TRUST AI. */
+/**
+ * Remplissage manuel, depuis le menu TRUST AI — et par le déclencheur.
+ *
+ * Parcourt TOUS les onglets de TRUST_SHEETS. Les identifiants sont uniques
+ * dans tout le classeur : un doublon repéré dans un second onglet est
+ * régénéré, l'original (première occurrence rencontrée) est conservé.
+ */
 function remplirIdentifiantsTrust() {
-  var sheet = SpreadsheetApp.getActive().getSheetByName(TRUST_SHEET_NAME);
-  if (!sheet) {
-    throw new Error('Onglet « ' + TRUST_SHEET_NAME + ' » introuvable.');
+  var seen = {};
+  for (var s = 0; s < TRUST_SHEETS.length; s++) {
+    remplirIdentifiantsOnglet(TRUST_SHEETS[s], seen);
   }
+}
+
+/** Remplit UN onglet. `seen` est partagé entre les onglets. */
+function remplirIdentifiantsOnglet(conf, seen) {
+  var sheet = SpreadsheetApp.getActive().getSheetByName(conf.name);
+  if (!sheet) {
+    throw new Error('Onglet « ' + conf.name + ' » introuvable.');
+  }
+  var headerRow = conf.headerRow || 1;
 
   var lastRow = sheet.getLastRow();
   var lastCol = sheet.getLastColumn();
-  if (lastRow <= TRUST_HEADER_ROW || lastCol < 1) return;
+  if (lastRow <= headerRow || lastCol < 1) return;
 
   // 1. Retrouver la colonne par son TITRE (jamais par sa position).
-  var headers = sheet.getRange(TRUST_HEADER_ROW, 1, 1, lastCol).getValues()[0];
+  var headers = sheet.getRange(headerRow, 1, 1, lastCol).getValues()[0];
   var idCol = -1;
   for (var i = 0; i < headers.length; i++) {
     if (String(headers[i]).trim().toLowerCase() === TRUST_ID_HEADER.toLowerCase()) {
@@ -76,20 +96,19 @@ function remplirIdentifiantsTrust() {
   if (idCol === -1) {
     throw new Error(
       'Colonne « ' + TRUST_ID_HEADER + ' » introuvable dans l\'onglet « ' +
-      sheet.getName() + ' », ligne ' + TRUST_HEADER_ROW + '.'
+      sheet.getName() + ' », ligne ' + headerRow + '.'
     );
   }
 
   // 2. Lire la colonne entière en une fois (rapide, même sur gros fichier).
-  var firstDataRow = TRUST_HEADER_ROW + 1;
-  var count = lastRow - TRUST_HEADER_ROW;
+  var firstDataRow = headerRow + 1;
+  var count = lastRow - headerRow;
   var range = sheet.getRange(firstDataRow, idCol, count, 1);
   var ids = range.getValues();
 
   // Contenu des lignes : une ligne entièrement vide ne reçoit pas d'ID.
   var allValues = sheet.getRange(firstDataRow, 1, count, lastCol).getValues();
 
-  var seen = {};
   var modified = false;
 
   for (var r = 0; r < ids.length; r++) {
