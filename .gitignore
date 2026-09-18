@@ -34,3 +34,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Archives : le dépôt EST la source, on ne la duplique pas.
+*.zip

@@ -430,3 +430,83 @@ describe("Lecture complète du jeu de fixtures", () => {
     for (const row of annulees) expect(row.stage).not.toBe("sortie");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Défauts constatés sur la version déployée (audit croisé, septembre 2026).
+// Chacun de ces tests ÉCHOUAIT avant correction.
+// ---------------------------------------------------------------------------
+describe("Fiabilisation de l'import", () => {
+  const recue = (extra: Record<string, string>) =>
+    parseOne(
+      fixtureRow({
+        A: "01/02/2026", B: "SM", E: "Article", F: "4", G: "Client",
+        K: "OUI", L: "05/02/2026", O: "RETRAIT ARGENTEUIL", ...extra,
+      }),
+    );
+
+  it("A. « partiel 0/4 » n'est pas disponible (0 n'est pas « rien »)", () => {
+    const row = recue({ J: "partiel 0/4" });
+    expect(row.stage).toBe("recue_argenteuil");
+    expect(anomalyTypes(row)).toContain("reception_partielle");
+    expect(row.anomalies.find((a) => a.type === "reception_partielle")?.message)
+      .toContain("0 sur 4");
+  });
+
+  it("B. « partiel » sur une ligne de quantité 1 reste incomplète", () => {
+    const row = parseOne(
+      fixtureRow({
+        A: "01/02/2026", B: "SM", E: "Canapé", F: "1", G: "Client",
+        J: "livraison partielle", K: "OUI", L: "05/02/2026", O: "RETRAIT ARGENTEUIL",
+      }),
+    );
+    expect(row.stage).not.toBe("disponible");
+    expect(anomalyTypes(row)).toContain("reception_partielle");
+    expect(row.anomalies.find((a) => a.type === "reception_partielle")?.message)
+      .toContain("sans précision");
+  });
+
+  it("une date dans un commentaire n'est pas lue comme un rapport n/m", () => {
+    // « RETOUR LE 30/04/2026 » ne doit pas devenir « 4 reçus sur 2026 ».
+    const row = recue({ J: "RETOUR LE 30/04/2026" });
+    expect(anomalyTypes(row)).not.toContain("reception_partielle");
+  });
+
+  it("C. annulation + marchandise reçue : signalée ET retirée du disponible", () => {
+    const row = recue({ J: "ANNULER FRAUDE" });
+    const anomaly = row.anomalies.find((a) => a.type === "annulation_signalee");
+    expect(anomaly?.severity).toBe("bloquant");
+    expect(row.stage).toBe("recue_argenteuil");
+    expect(row.stage).not.toBe("disponible");
+    // Décision F : la ligne n'est PAS fermée d'office.
+    expect(row.stage).not.toBe("annulee");
+    expect(row.stage).not.toBe("sortie");
+  });
+
+  it("C bis. sans anomalie bloquante, la ligne reste disponible", () => {
+    expect(recue({}).stage).toBe("disponible");
+  });
+
+  it("D. aucune date connue : aucun événement inventé", () => {
+    const row = parseOne(
+      fixtureRow({ B: "SM", E: "Fauteuil", F: "1", G: "Client", K: "OUI" }),
+    );
+    expect(row.events).toHaveLength(0);
+    expect(anomalyTypes(row)).toContain("reception_sans_date");
+  });
+
+  it("D bis. deux lectures à des jours différents donnent les mêmes événements", () => {
+    // C'est ce qui produisait un événement de plus chaque jour.
+    const row = fixtureRow({ B: "SM", E: "Fauteuil", F: "1", G: "Client", K: "OUI" });
+    const a = parseOne(row).events.map((e) => `${e.event_type}@${e.occurred_on}`);
+    const b = parseOne(row).events.map((e) => `${e.event_type}@${e.occurred_on}`);
+    expect(a).toEqual(b);
+    const aujourdhui = new Date().toISOString().slice(0, 10);
+    expect(a.some((e) => e.endsWith(aujourdhui))).toBe(false);
+  });
+
+  it("D ter. avec une date, l'événement existe et porte cette date", () => {
+    const row = recue({});
+    expect(row.events.some((e) => e.event_type === "reception_argenteuil"
+      && e.occurred_on === "2026-02-05")).toBe(true);
+  });
+});
