@@ -32,7 +32,7 @@ function fakeSupabase() {
                     if (row.webhook_id && rows.some((r) => r.webhook_id === row.webhook_id)) {
                       return { data: null, error: { code: "23505" } };
                     }
-                    const inserted = { ...row, id: `evt-${++seq}`, received_at: new Date().toISOString(), error: null } as Row;
+                    const inserted = { ...row, id: `evt-${++seq}`, received_at: new Date().toISOString(), error: null } as unknown as Row;
                     rows.push(inserted);
                     return { data: { id: inserted.id }, error: null };
                   }),
