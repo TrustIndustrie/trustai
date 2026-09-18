@@ -34,8 +34,9 @@ import { registerWebhookEvent, type WebhookEventsClient } from "@/lib/shopify/we
  *     livraisons simultanées ne peuvent pas passer toutes les deux. Une
  *     relivraison d'un événement traité est acquittée (200) sans
  *     retraitement ni nouvelle ligne de journal ; une relivraison d'un
- *     événement dont le traitement avait ÉCHOUÉ est retraitée sur la même
- *     ligne (c'est le but de la relivraison) ;
+ *     événement dont le traitement avait ÉCHOUÉ, ou resté « recu » après
+ *     une interruption du serveur, est PRISE EN CHARGE atomiquement par un
+ *     seul appel et retraitée sur la même ligne ;
  *  5. les écritures utilisent la clé serveur Supabase, jamais exposée au
  *     navigateur ; aucun secret n'apparaît dans les réponses ni les logs.
  *
@@ -119,7 +120,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, duplicate: true, status: registration.status });
   }
   const eventId = registration.eventId ?? undefined;
-  const retry = registration.kind === "reprise";
+  const retry = registration.kind === "reprise" ? registration.reason : undefined;
 
   if (!SUPPORTED_TOPICS.has(topic)) {
     // Sujet non géré : accusé de réception pour éviter les re-livraisons.
@@ -142,7 +143,7 @@ export async function POST(request: Request) {
         .update({ status: "traite", error: null, processed_at: new Date().toISOString() })
         .eq("id", eventId);
     }
-    return NextResponse.json({ ok: true, retried: retry || undefined });
+    return NextResponse.json({ ok: true, retried: retry });
   } catch (error) {
     if (eventId) {
       await supabase

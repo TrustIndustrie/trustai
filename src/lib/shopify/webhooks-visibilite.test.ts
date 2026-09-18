@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { listSubscriptionStatus, listVisibleSubscriptions, statusFromVisible } from "./webhooks";
-import { registerWebhookEvent, type WebhookEventsClient } from "./webhook-events";
+import { registerWebhookEvent, STALE_AFTER_MS, type WebhookEventsClient } from "./webhook-events";
 
 const NEW = "https://trustai-omega.vercel.app/api/webhooks/shopify";
 const OLD = "https://ancien-trust-ai.vercel.app/api/webhooks/shopify";
@@ -94,9 +94,16 @@ describe("Abonnements visibles : sujet et adresse, sans secret", () => {
 // Idempotence : l'insertion est la garde.
 // ---------------------------------------------------------------------------
 
-/** Faux client Supabase : un index unique sur webhook_id, en mémoire. */
+/**
+ * Faux client Supabase : un index unique sur webhook_id, en mémoire, et des
+ * mises à jour CONDITIONNELLES qui ne touchent une ligne que si ses
+ * conditions tiennent encore — exactement ce sur quoi repose la prise en
+ * charge atomique.
+ */
+type Row = { id: string; webhook_id: string | null; status: string; received_at: string; error: string | null };
+
 function fakeClient() {
-  const rows: { id: string; webhook_id: string | null; status: string }[] = [];
+  const rows: Row[] = [];
   let seq = 0;
   const client: WebhookEventsClient = {
     from() {
@@ -110,7 +117,10 @@ function fakeClient() {
                   if (webhookId && rows.some((r) => r.webhook_id === webhookId)) {
                     return { data: null, error: { code: "23505", message: "duplicate key" } };
                   }
-                  const inserted = { id: `evt-${++seq}`, webhook_id: webhookId, status: String(row.status) };
+                  const inserted: Row = {
+                    id: `evt-${++seq}`, webhook_id: webhookId, status: String(row.status),
+                    received_at: new Date().toISOString(), error: null,
+                  };
                   rows.push(inserted);
                   return { data: { id: inserted.id }, error: null };
                 },
@@ -125,13 +135,36 @@ function fakeClient() {
                 async maybeSingle() {
                   const found = rows.find((r) => r.webhook_id === value);
                   return {
-                    data: found ? { id: found.id, status: found.status as never } : null,
+                    data: found
+                      ? { id: found.id, status: found.status as never, received_at: found.received_at }
+                      : null,
                     error: null,
                   };
                 },
               };
             },
           };
+        },
+        update(values: Record<string, unknown>) {
+          const conditions: ((r: Row) => boolean)[] = [];
+          const apply = async () => {
+            const touched = rows.filter((r) => conditions.every((c) => c(r)));
+            for (const r of touched) Object.assign(r, values);
+            return { data: touched.map((r) => ({ id: r.id })), error: null };
+          };
+          const eqFactory = (column: string, value: string) => {
+            conditions.push((r) => String((r as never as Record<string, unknown>)[column]) === value);
+            return chain;
+          };
+          const chain = {
+            eq: eqFactory,
+            lt(column: string, value: string) {
+              conditions.push((r) => String((r as never as Record<string, unknown>)[column]) < value);
+              return { select: () => apply() };
+            },
+            select: () => apply(),
+          };
+          return { eq: eqFactory } as never;
         },
       };
     },
@@ -180,8 +213,58 @@ describe("Livraisons Shopify : doublons acquittés sans retraitement", () => {
     await registerWebhookEvent(client, input("wh-1"));
     rows[0].status = "erreur";
     const r = await registerWebhookEvent(client, input("wh-1"));
-    expect(r).toEqual({ kind: "reprise", eventId: "evt-1" });
+    expect(r).toEqual({ kind: "reprise", eventId: "evt-1", reason: "echec" });
     expect(rows).toHaveLength(1);
+  });
+
+  it("deux relivraisons SIMULTANÉES après un échec : une seule reprend, l'autre est un doublon", async () => {
+    const { client, rows } = fakeClient();
+    await registerWebhookEvent(client, input("wh-1"));
+    rows[0].status = "erreur";
+    rows[0].error = "panne";
+    const [a, b] = await Promise.all([
+      registerWebhookEvent(client, input("wh-1")),
+      registerWebhookEvent(client, input("wh-1")),
+    ]);
+    expect([a.kind, b.kind].sort()).toEqual(["doublon", "reprise"]);
+    expect(rows).toHaveLength(1);
+    // La ligne est repassée « recu », erreur effacée : le retraitement est en cours.
+    expect(rows[0].status).toBe("recu");
+    expect(rows[0].error).toBeNull();
+  });
+
+  it("livraison restée « recu » après interruption du serveur : reprise après le délai, une seule fois", async () => {
+    const { client, rows } = fakeClient();
+    await registerWebhookEvent(client, input("wh-1"));
+    // Le serveur est tombé : la ligne reste « recu ». Peu après, Shopify relivre.
+    const t0 = new Date(rows[0].received_at).getTime();
+    const bientot = () => new Date(t0 + 60 * 1000);
+    const encoreEnCours = await registerWebhookEvent(client, input("wh-1"), bientot);
+    expect(encoreEnCours.kind).toBe("doublon"); // traitement peut-être encore en cours : on ne double pas
+
+    // Bien plus tard, deux relivraisons simultanées : une seule reprend.
+    const plusTard = () => new Date(t0 + STALE_AFTER_MS + 1000);
+    const [a, b] = await Promise.all([
+      registerWebhookEvent(client, input("wh-1"), plusTard),
+      registerWebhookEvent(client, input("wh-1"), plusTard),
+    ]);
+    expect([a.kind, b.kind].sort()).toEqual(["doublon", "reprise"]);
+    const reprise = [a, b].find((r) => r.kind === "reprise")!;
+    expect(reprise).toMatchObject({ eventId: "evt-1", reason: "interrompue" });
+    expect(rows).toHaveLength(1);
+    // received_at a été avancé : une troisième relivraison immédiate est un doublon.
+    const c = await registerWebhookEvent(client, input("wh-1"), plusTard);
+    expect(c.kind).toBe("doublon");
+  });
+
+  it("une ligne « traite » ou « ignore » n'est jamais reprise", async () => {
+    for (const status of ["traite", "ignore"] as const) {
+      const { client, rows } = fakeClient();
+      await registerWebhookEvent(client, input("wh-1"));
+      rows[0].status = status;
+      const r = await registerWebhookEvent(client, input("wh-1"), () => new Date(Date.now() + 2 * STALE_AFTER_MS));
+      expect(r).toMatchObject({ kind: "doublon", status });
+    }
   });
 
   it("sans identifiant de livraison : jamais considéré comme doublon", async () => {

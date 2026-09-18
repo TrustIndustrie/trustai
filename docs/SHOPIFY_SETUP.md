@@ -200,7 +200,14 @@ L'insertion dans le journal `shopify_webhook_events` sert de garde grâce à
 l'index unique sur `webhook_id` : une seule livraison passe, l'autre est
 acquittée comme doublon sans retraitement ni nouvelle ligne de journal. Une
 relivraison d'un événement dont le traitement avait **échoué** est, elle,
-retraitée sur la même ligne : c'est le but de la relivraison.
+retraitée sur la même ligne : c'est le but de la relivraison. La prise en
+charge est atomique (mise à jour conditionnelle) : si deux relivraisons
+arrivent en même temps, une seule retraite.
+
+Une livraison restée « recu » parce que le serveur a été interrompu en plein
+traitement n'est pas bloquée pour autant : passé 15 minutes, la relivraison
+suivante la reprend, une seule fois, sur la même ligne. Avant ce délai, elle
+est acquittée comme doublon, car le traitement peut encore être en cours.
 
 ## 6. Tester
 
