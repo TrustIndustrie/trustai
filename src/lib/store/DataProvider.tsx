@@ -31,6 +31,7 @@ import {
 } from "../mutations";
 import type { AppMode } from "../config";
 import type {
+  LogisticsAnomaly,
   Database,
   LogisticsLineDetail,
   LogisticsLineFilters,
@@ -111,6 +112,9 @@ interface DataContextValue {
   setRecapSourceActive: (sourceId: string, active: boolean) => Promise<void>;
   listLogisticsLines: (filters: LogisticsLineFilters) => Promise<LogisticsLinePage>;
   getLogisticsLine: (lineId: string) => Promise<LogisticsLineDetail>;
+  resolveAnomaly: (anomalyId: string, resolution: "traitee" | "ignoree", note: string) => Promise<LogisticsAnomaly>;
+  reopenAnomaly: (anomalyId: string, note: string) => Promise<LogisticsAnomaly>;
+  reportAnomaly: (lineId: string, severity: LogisticsAnomaly["severity"], message: string) => Promise<LogisticsAnomaly>;
   resetDemo: () => void;
 }
 
@@ -352,6 +356,30 @@ export function DataProvider({ children }: { children: ReactNode }) {
     [remote],
   );
 
+  const resolveAnomaly = useCallback(
+    async (anomalyId: string, resolution: "traitee" | "ignoree", note: string) => {
+      if (!remote) throw new Error("Les anomalies se tranchent en mode connecté.");
+      return remote.resolveAnomaly(anomalyId, resolution, note);
+    },
+    [remote],
+  );
+
+  const reopenAnomaly = useCallback(
+    async (anomalyId: string, note: string) => {
+      if (!remote) throw new Error("Les anomalies se rouvrent en mode connecté.");
+      return remote.reopenAnomaly(anomalyId, note);
+    },
+    [remote],
+  );
+
+  const reportAnomaly = useCallback(
+    async (lineId: string, severity: LogisticsAnomaly["severity"], message: string) => {
+      if (!remote) throw new Error("Les anomalies se signalent en mode connecté.");
+      return remote.reportAnomaly(lineId, severity, message);
+    },
+    [remote],
+  );
+
   const receiveShipment = useCallback(
     async (
       shipmentId: string,
@@ -397,6 +425,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setRecapSourceActive,
       listLogisticsLines,
       getLogisticsLine,
+      resolveAnomaly,
+      reopenAnomaly,
+      reportAnomaly,
       resetDemo,
     }),
     [
@@ -420,6 +451,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setRecapSourceActive,
       listLogisticsLines,
       getLogisticsLine,
+      resolveAnomaly,
+      reopenAnomaly,
+      reportAnomaly,
       resetDemo,
     ],
   );

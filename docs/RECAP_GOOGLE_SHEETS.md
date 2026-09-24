@@ -14,6 +14,13 @@ installation, aucune ligne de commande.
 
 ---
 
+> **Règle en vigueur : aucune écriture dans le Google Sheet original.**
+> TRUST AI lit une **copie TEST**, alimentée par un script installé dans cette
+> copie. Lire d'abord [`COPIE_TEST.md`](COPIE_TEST.md) : c'est l'identifiant
+> de la **copie** qu'on partage et qu'on renseigne ci-dessous, et l'étape 3
+> (script `ID TRUST` dans l'original) devient **facultative**, les
+> identifiants étant gérés dans la copie.
+
 ## Ce que TRUST AI fait — et ne fait pas
 
 | TRUST AI | |
@@ -94,7 +101,12 @@ https://docs.google.com/spreadsheets/d/1AbCdEf...XyZ/edit#gid=0
 
 ---
 
-## Étape 3 — Installer le script « ID TRUST » dans le Sheets
+## Étape 3 — Installer le script « ID TRUST » dans le Sheets (facultatif)
+
+> Avec la copie TEST ([`COPIE_TEST.md`](COPIE_TEST.md)), cette étape n'est
+> **pas nécessaire** : le script de synchronisation gère la colonne
+> `ID TRUST` dans la copie. Ne l'installer dans l'original que si l'équipe
+> accepte explicitement cette unique colonne technique.
 
 Ce script donne à chaque ligne un identifiant stable. Sans lui, TRUST AI
 reconnaît quand même les lignes (par empreinte), mais une ligne modifiée en

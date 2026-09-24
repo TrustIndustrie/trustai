@@ -370,7 +370,41 @@ export interface LogisticsLinePage {
 export interface LogisticsLineDetail {
   line: Record<string, unknown> | null;
   events: Record<string, unknown>[];
-  anomalies: Record<string, unknown>[];
+  anomalies: LogisticsAnomaly[];
+}
+
+/** Décision humaine ou fermeture automatique, tracée en ajout seul. */
+export interface LogisticsAnomalyDecision {
+  id: string;
+  action: "resolution" | "reouverture" | "fermeture_automatique" | "signalement";
+  resolution: AnomalyResolution | null;
+  note: string | null;
+  decided_by: string | null;
+  decided_by_label: string | null;
+  decided_at: string;
+  recap_read_id: string | null;
+  previous_state: Record<string, unknown> | null;
+}
+
+/** `disparue` est réservée à la synchronisation ; un humain tranche
+ * `traitee` ou `ignoree`. */
+export type AnomalyResolution = "traitee" | "ignoree" | "disparue";
+
+export interface LogisticsAnomaly {
+  id: string;
+  type: string;
+  severity: "info" | "avertissement" | "bloquant";
+  message: string;
+  /** `synchronisation` : recalculée depuis le fichier ; `manuelle` : signalée. */
+  origin: "synchronisation" | "manuelle";
+  detected_at: string;
+  resolved_at: string | null;
+  resolved_by: string | null;
+  resolved_by_label?: string | null;
+  resolution: AnomalyResolution | null;
+  resolution_note: string | null;
+  decisions: LogisticsAnomalyDecision[];
+  [key: string]: unknown;
 }
 
 /**
