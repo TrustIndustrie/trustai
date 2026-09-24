@@ -345,9 +345,12 @@ set local "request.jwt.claim.sub" = 'a1000000-0000-4000-a100-000000000003';
 do $$
 declare v_list jsonb;
 begin
+  -- Cinq imports ont abouti : deux listes de factures de Lisses, une de
+  -- Herblay, un journal, un catalogue. Les quatre fichiers refusés n'ont
+  -- laissé aucune trace.
   v_list := public.list_skara_imports();
-  if jsonb_array_length(v_list) <> 4 then
-    raise exception 'ÉCHEC 8 : % import(s) visible(s) au lieu de 4', jsonb_array_length(v_list);
+  if jsonb_array_length(v_list) <> 5 then
+    raise exception 'ÉCHEC 8 : % import(s) visible(s) au lieu de 5', jsonb_array_length(v_list);
   end if;
 end $$;
 reset role;
