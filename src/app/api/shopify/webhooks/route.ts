@@ -5,6 +5,7 @@ import { ShopifyConfigError } from "@/lib/shopify/auth";
 import {
   ensureSubscriptions,
   listVisibleSubscriptions,
+  retargetSubscriptions,
   statusFromVisible,
 } from "@/lib/shopify/webhooks";
 
@@ -16,7 +17,13 @@ import {
  *   pour repérer ceux qui pointent encore vers un ancien déploiement.
  *   Aucun secret : sujets, types de point de terminaison et adresses de
  *   rappel uniquement ;
- * - POST : crée UNIQUEMENT les abonnements manquants (aucun doublon).
+ * - POST sans corps : crée UNIQUEMENT les abonnements manquants (aucun
+ *   doublon) ;
+ * - POST { action: "retarget", from, to, dryRun } : BASCULE les abonnements
+ *   qui pointent vers `from` vers `to`, par modification (même identifiant,
+ *   ni création ni suppression). `dryRun` vaut vrai par défaut : le plan est
+ *   renvoyé sans rien changer ; il faut `dryRun: false` explicitement pour
+ *   agir. Retour arrière : même appel, adresses inversées.
  *
  * Autorisation vérifiée côté serveur : permission « administrer ».
  * Aucun abonnement n'est créé automatiquement au chargement d'une page :
@@ -32,6 +39,18 @@ function callbackUrlFrom(request: Request): string {
   const configured = process.env.NEXT_PUBLIC_APP_URL?.trim().replace(/\/$/, "");
   const origin = configured || new URL(request.url).origin;
   return `${origin}/api/webhooks/shopify`;
+}
+
+/** Corps JSON facultatif : absent ou vide → null. */
+async function readJsonBody(request: Request): Promise<Record<string, unknown> | null> {
+  const text = await request.text();
+  if (!text.trim()) return null;
+  try {
+    const parsed = JSON.parse(text);
+    return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : null;
+  } catch {
+    throw new Error("Corps JSON invalide.");
+  }
 }
 
 async function guardAndConfig() {
@@ -83,6 +102,23 @@ export async function POST(request: Request) {
   if (blocked) return blocked;
   const callbackUrl = callbackUrlFrom(request);
   try {
+    const body = await readJsonBody(request);
+    if (body?.action === "retarget") {
+      const from = typeof body.from === "string" ? body.from.trim() : "";
+      const to = typeof body.to === "string" && body.to.trim() ? body.to.trim() : callbackUrl;
+      if (!from) {
+        return NextResponse.json(
+          { error: "Bascule : l'adresse source « from » est obligatoire." },
+          { status: 400 },
+        );
+      }
+      const dryRun = body.dryRun !== false;
+      const result = await retargetSubscriptions(from, to, { dryRun });
+      return NextResponse.json({ ok: true, action: "retarget", ...result });
+    }
+    if (body?.action !== undefined) {
+      return NextResponse.json({ error: `Action inconnue : ${String(body.action)}.` }, { status: 400 });
+    }
     const result = await ensureSubscriptions(callbackUrl);
     return NextResponse.json({ ok: true, callbackUrl, ...result });
   } catch (error) {
