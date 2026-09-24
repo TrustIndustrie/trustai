@@ -50,6 +50,7 @@ export const PAGE_ACCESS: PageAccess[] = [
   { href: "/fournisseurs", permissions: ["gerer_achats", "gerer_logistique"] },
   { href: "/validations", permissions: ["valider_decision"] },
   { href: "/compte", permissions: null },
+  { href: "/skara/import", permissions: ["administrer"] },
   { href: "/parametres/archives", permissions: ["administrer"] },
   // --- Modules archivés (hors menu principal) ---
   { href: "/achats", permissions: ["gerer_achats"], archived: true },
