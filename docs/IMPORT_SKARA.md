@@ -93,12 +93,50 @@ l'intervalle 0 à 100 déclenche une anomalie.
 **Skara n'émet pas les champs vides de fin de ligne.** Une ligne peut donc
 compter moins de colonnes que l'en-tête, et un champ vide n'est pas un zéro.
 
-## Ce que ce lot ne fait pas encore
+## Consultation et contrôle
 
-La consultation des factures et l'écran de contrôle mensuel arrivent au lot
-1B. L'enrichissement, c'est-à-dire le vendeur réel, le coût constaté et le
+Deux écrans lisent ce qui a été importé, sans jamais rien modifier.
+
+**Factures Skara** liste les pièces, filtrables par magasin, période, nature
+et recherche sur le numéro ou le client. Trois choses y sont visibles que
+Skara ne montre pas directement : la **marge creuse**, c'est-à-dire une marge
+égale au hors taxes parce que le coût d'achat de l'article manque ; la
+**nature de chaque ligne**, produit, remise, service ou éco-participation,
+avec la mention « proposée » tant qu'un humain ne l'a pas confirmée ; et la
+**contrepartie** d'une pièce, puisqu'une facture entièrement annulée n'existe
+chez Skara que sous la forme de son avoir.
+
+**Contrôle Skara** est l'écran qui donne confiance à tout le reste. Il
+compare, mois par mois, ce que dit la liste des factures et ce que dit le
+journal comptable. Ces deux exports étant produits séparément par Skara,
+leur concordance vaut preuve.
+
+L'écart entre les deux n'est pas une erreur : il doit s'expliquer par les
+pièces **non émises**, qui sont des pièces de gestion absentes de la
+comptabilité, et par les avoirs. Sur les fichiers réels, cette explication
+tombe au centime. Quand l'écart ne correspond pas, c'est qu'un fichier
+manque, et c'est précisément ce qu'il faut voir.
+
+Deux indicateurs de fiabilité accompagnent chaque mois : la part de factures
+**sans vendeur**, renseigné dans 3 % des cas seulement, ce qui interdit toute
+analyse par vendeur tant que la saisie ne change pas ; et le nombre et le
+montant hors taxes des factures à **marge creuse**.
+
+Le même écran liste enfin les **articles sans coût d'achat exploitable**,
+classés par prix de vente décroissant. C'est la liste des fiches à compléter
+dans Skara pour que la marge redevienne calculable, et l'ordre est celui de
+l'impact.
+
+## Ce que ces lots ne font pas encore
+
+L'enrichissement, c'est-à-dire le vendeur réel, le coût constaté et le
 rattachement à la marchandise, arrive au lot 1C dans des tables séparées
 qu'un réimport ne touchera jamais.
+
+Le classement des articles sans coût se fait par prix de vente et non par
+chiffre d'affaires généré, parce que rattacher une ligne de facture à un
+article demande un rapprochement de libellés validé à la main. C'est aussi
+du lot 1C.
 
 ## Retour arrière
 

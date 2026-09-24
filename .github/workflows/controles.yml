@@ -216,7 +216,9 @@ jobs:
                                    'resolve_logistics_anomaly','reopen_logistics_anomaly',
                                    'report_logistics_anomaly','get_logistics_anomaly',
                                    'import_skara_file','list_skara_imports',
-                                   'get_skara_import');
+                                   'get_skara_import','list_skara_invoices',
+                                   'get_skara_invoice','get_skara_monthly_control',
+                                   'list_skara_articles_without_cost');
             if v <> 0 then raise exception 'Exécution ouverte à anon/PUBLIC : %', v; end if;
 
             -- Les fonctions INTERNES (schéma app) ne sont appelables ni par
@@ -267,6 +269,11 @@ jobs:
         run: |
           set -euo pipefail
           psql -v ON_ERROR_STOP=1 -f supabase/tests/phase6_import_skara.test.sql
+
+      - name: Tests de lecture Skara (phase 7)
+        run: |
+          set -euo pipefail
+          psql -v ON_ERROR_STOP=1 -f supabase/tests/phase7_skara_lecture.test.sql
 
       - name: Test de concurrence (suraffectation impossible)
         run: |
@@ -348,6 +355,7 @@ jobs:
              where role in ('responsable_logistique','livreur')"
           # Les retours arrière se déroulent dans l'ordre inverse des
           # migrations : la plus récente d'abord, le socle en dernier.
+          psql -v ON_ERROR_STOP=1 -q -f supabase/rollbacks/ROLLBACK_20260924001600_skara_lecture.sql
           psql -v ON_ERROR_STOP=1 -q -f supabase/rollbacks/ROLLBACK_20260924001500_import_skara.sql
           psql -v ON_ERROR_STOP=1 -q -f supabase/rollbacks/ROLLBACK_20260918001300_resolution_anomalies.sql
           psql -v ON_ERROR_STOP=1 -q -f supabase/rollbacks/ROLLBACK_20260827001100_recap_multi_onglets.sql
@@ -379,8 +387,10 @@ jobs:
             if v <> 0 then raise exception 'Colonne de préfixe (migration 15) restante'; end if;
             select count(*) into v from information_schema.routines
             where routine_schema='public' and routine_name in (
-              'import_skara_file','list_skara_imports','get_skara_import');
-            if v <> 0 then raise exception 'Fonctions d''import Skara restantes : %', v; end if;
+              'import_skara_file','list_skara_imports','get_skara_import',
+              'list_skara_invoices','get_skara_invoice',
+              'get_skara_monthly_control','list_skara_articles_without_cost');
+            if v <> 0 then raise exception 'Fonctions Skara restantes : %', v; end if;
             select count(*) into v from information_schema.columns
             where table_schema='public'
               and ((table_name='logistics_lines'

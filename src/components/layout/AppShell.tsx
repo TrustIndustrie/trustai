@@ -9,6 +9,8 @@ import {
   BookOpen,
   Building2,
   CheckSquare,
+  ClipboardCheck,
+  FileText,
   FileUp,
   CircleAlert,
   ClipboardList,
@@ -46,6 +48,8 @@ const navigation = [
   { href: "/catalogue", label: "Référentiel produits", icon: BookOpen },
   { href: "/fournisseurs", label: "Fournisseurs", icon: Building2 },
   { href: "/validations", label: "Validations", icon: CheckSquare },
+  { href: "/skara/controle", label: "Contrôle Skara", icon: ClipboardCheck },
+  { href: "/skara/factures", label: "Factures Skara", icon: FileText },
   { href: "/skara/import", label: "Import Skara", icon: FileUp },
   { href: "/parametres/archives", label: "Archives", icon: Archive },
 ];
