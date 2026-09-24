@@ -433,7 +433,7 @@ begin
             where organization_id = v_org
             group by status) c), '{}'::jsonb),
     'rows', coalesce((
-      select jsonb_agg(row_to_jsonb(x) order by x.abandoned_at desc)
+      select jsonb_agg(to_jsonb(x) order by x.abandoned_at desc)
       from (
         select a.id, a.shopify_checkout_id, a.abandoned_at, a.total_cents,
                a.currency, a.item_count, a.recovery_url is not null as has_recovery_url,
