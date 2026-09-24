@@ -82,6 +82,10 @@ export async function upsertOrder(
         discount_cents: mapped.order.discount_cents,
         notes: mapped.order.notes ?? null,
         shopify_updated_at: mapped.order.shopify_updated_at ?? null,
+        // Écrit aussi sur une commande déjà connue : c'est ce qui permet de
+        // rattacher son panier abandonné même si la première livraison du
+        // webhook est arrivée avant la migration 14.
+        shopify_checkout_token: mapped.order.shopify_checkout_token ?? null,
       })
       .eq("id", orderId);
     if (error) throw new Error(`orders: ${error.message}`);
@@ -103,6 +107,7 @@ export async function upsertOrder(
         shopify_order_id: mapped.order.shopify_order_id,
         shopify_order_number: mapped.order.shopify_order_number,
         shopify_updated_at: mapped.order.shopify_updated_at ?? null,
+        shopify_checkout_token: mapped.order.shopify_checkout_token ?? null,
       })
       .select("id")
       .single();

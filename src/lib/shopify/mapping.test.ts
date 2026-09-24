@@ -179,6 +179,22 @@ describe("Mapping d'une commande Shopify", () => {
     expect(mapped.customer.name).toBe("Client Shopify");
     expect(mapped.customer.shopify_customer_id).toBeUndefined();
   });
+
+  it("garde le jeton de tunnel, seule clé vers le panier abandonné", () => {
+    const mapped = mapOrderPayload({
+      ...orderPayload,
+      checkout_token: "abc123DEF",
+    });
+    expect(mapped.order.shopify_checkout_token).toBe("abc123DEF");
+  });
+
+  it("n'invente pas de jeton quand Shopify n'en donne pas", () => {
+    expect(mapOrderPayload(orderPayload).order.shopify_checkout_token).toBeUndefined();
+    expect(
+      mapOrderPayload({ ...orderPayload, checkout_token: null }).order
+        .shopify_checkout_token,
+    ).toBeUndefined();
+  });
 });
 
 describe("Mapping d'un produit Shopify", () => {

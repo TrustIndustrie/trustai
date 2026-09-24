@@ -9,6 +9,7 @@ import {
   BookOpen,
   Building2,
   CheckSquare,
+  ShoppingCart,
   CircleAlert,
   ClipboardList,
   LayoutDashboard,
@@ -45,6 +46,7 @@ const navigation = [
   { href: "/catalogue", label: "Référentiel produits", icon: BookOpen },
   { href: "/fournisseurs", label: "Fournisseurs", icon: Building2 },
   { href: "/validations", label: "Validations", icon: CheckSquare },
+  { href: "/paniers-abandonnes", label: "Paniers abandonnés", icon: ShoppingCart },
   { href: "/parametres/archives", label: "Archives", icon: Archive },
 ];
 

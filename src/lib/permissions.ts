@@ -49,6 +49,7 @@ export const PAGE_ACCESS: PageAccess[] = [
   { href: "/arrivages", permissions: ["gerer_logistique", "gerer_achats"] },
   { href: "/fournisseurs", permissions: ["gerer_achats", "gerer_logistique"] },
   { href: "/validations", permissions: ["valider_decision"] },
+  { href: "/paniers-abandonnes", permissions: ["voir_acquisition"] },
   { href: "/compte", permissions: null },
   { href: "/parametres/archives", permissions: ["administrer"] },
   // --- Modules archivés (hors menu principal) ---

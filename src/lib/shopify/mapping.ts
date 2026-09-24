@@ -168,6 +168,13 @@ export interface MappedOrder {
     shopify_updated_at?: string;
     financial_status?: string;
     acquisition_source?: AcquisitionSource;
+    /**
+     * Jeton du tunnel de commande. C'est la SEULE clé qui relie une commande
+     * au panier abandonné dont elle est issue : Shopify le porte sur la
+     * commande et sur le checkout. Sans lui, un panier relancé puis commandé
+     * continuerait de recevoir des relances.
+     */
+    shopify_checkout_token?: string;
   };
   lines: {
     shopify_line_id: string;
@@ -250,6 +257,10 @@ export function mapOrderPayload(payload: Payload): MappedOrder {
       shopify_updated_at: payload.updated_at ?? undefined,
       financial_status: financial,
       acquisition_source: source,
+      shopify_checkout_token:
+        payload.checkout_token !== null && payload.checkout_token !== undefined
+          ? String(payload.checkout_token)
+          : undefined,
     },
     lines: (payload.line_items ?? []).map((item: Payload) => ({
       shopify_line_id: String(item.id),
