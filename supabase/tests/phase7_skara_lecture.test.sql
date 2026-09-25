@@ -241,7 +241,16 @@ end $$;
 
 -- ---------------------------------------------------------------------------
 -- 4. Contrôle mensuel et recoupement avec le journal
+--
+-- Ce scénario passe à l'ADMINISTRATEUR. Le journal comptable ne porte pas le
+-- magasin : depuis la migration 17 il n'est servi qu'à la vision globale, et
+-- le recoupement n'a donc de sens que pour elle. Le scénario 8 vérifie
+-- l'autre versant, celui du responsable de magasin.
 -- ---------------------------------------------------------------------------
+reset role;
+set role authenticated;
+set local "request.jwt.claim.sub" = 'd1000000-0000-4000-d100-000000000001';
+
 do $$
 declare v_ctrl jsonb; v_store jsonb; v_journal jsonb; v_ecart numeric;
 begin
