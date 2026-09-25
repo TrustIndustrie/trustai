@@ -93,6 +93,19 @@ l'intervalle 0 à 100 déclenche une anomalie.
 **Skara n'émet pas les champs vides de fin de ligne.** Une ligne peut donc
 compter moins de colonnes que l'en-tête, et un champ vide n'est pas un zéro.
 
+## Se tromper de nature de fichier
+
+Deux exports Skara commencent par la même colonne, « NUMERO FACTURE » : la
+liste des factures et les lignes de factures. Seule la troisième colonne les
+distingue, « LIBELLE PRODUIT » du côté des lignes.
+
+TRUST AI lit donc l'en-tête du fichier déposé et le compare au sélecteur. En
+cas d'écart, l'analyse s'arrête avec un message qui nomme la nature réelle :
+il suffit de changer le sélecteur et de relancer. Rien n'est écrit.
+
+Le journal comptable n'a pas d'en-tête : il n'est pas reconnaissable et
+aucune affirmation n'est faite à son sujet.
+
 ## Consultation et contrôle
 
 Deux écrans lisent ce qui a été importé, sans jamais rien modifier.

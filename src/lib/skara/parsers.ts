@@ -1,4 +1,4 @@
-import { amount, field, isoDate, parseCsv } from "./csv";
+import { amount, detectDelimiter, field, isoDate, parseCsv } from "./csv";
 import type {
   Anomaly,
   ArticleRow,
@@ -9,6 +9,7 @@ import type {
   LineNature,
   NetCostOrigin,
   ParsedFile,
+  SkaraFileKind,
 } from "./types";
 
 /**
@@ -82,6 +83,59 @@ export function parseInvoiceNumberField(value: string): InvoiceNumberParts {
  */
 function fallbackKey(parts: string[]): string {
   return `sans-numero:${parts.map((p) => p.trim().toLowerCase()).join("|")}`;
+}
+
+// ---------------------------------------------------------------------------
+// 0. Reconnaissance de la nature réelle du fichier
+// ---------------------------------------------------------------------------
+
+/** Intitulés lisibles, identiques à ceux du sélecteur de l'écran d'import. */
+export const KIND_LABELS: Record<SkaraFileKind, string> = {
+  liste_factures: "Liste des factures",
+  lignes_factures: "Lignes de factures",
+  catalogue: "Catalogue des articles",
+  journal_comptable: "Journal comptable",
+};
+
+/**
+ * Nature réelle du fichier, lue dans son en-tête.
+ *
+ * Deux exports Skara commencent par « NUMERO FACTURE » : seule la troisième
+ * colonne les sépare. Sans cette reconnaissance, déposer la liste alors que
+ * les lignes sont sélectionnées ne donne qu'un « en-tête inattendu », qui
+ * n'indique pas quoi corriger.
+ *
+ * Le journal n'a pas d'en-tête : il n'est pas reconnaissable et renvoie
+ * null, faute de quoi on l'affirmerait à tort.
+ */
+export function detectFileKind(content: string): SkaraFileKind | null {
+  const firstLine = content.replace(/^\uFEFF/, "").split(/\r?\n/, 1)[0] ?? "";
+  if (firstLine.trim() === "") return null;
+  const cells = parseCsv(firstLine, detectDelimiter(firstLine))[0] ?? [];
+  const upper = cells.map((c) => c.trim().toUpperCase());
+  if (field(upper, 0) === "PK_FOURNISSEUR") return "catalogue";
+  if (field(upper, 0) === "NUMERO FACTURE") {
+    return field(upper, 2) === "LIBELLE PRODUIT" ? "lignes_factures" : "liste_factures";
+  }
+  return null;
+}
+
+/**
+ * Anomalie bloquante quand le fichier déposé n'est pas de la nature choisie.
+ * Retourne null quand rien ne permet de l'affirmer.
+ */
+export function mismatchAnomaly(
+  selected: SkaraFileKind,
+  content: string,
+): Anomaly | null {
+  const detected = detectFileKind(content);
+  if (detected === null || detected === selected) return null;
+  return {
+    kind: "nature_de_fichier_incorrecte",
+    severity: "bloquant",
+    message: `Ce fichier est un export « ${KIND_LABELS[detected]} », alors que « ${KIND_LABELS[selected]} » est sélectionné. Changez la nature du fichier, puis relancez l'analyse.`,
+    payload: { choisi: selected, reconnu: detected },
+  };
 }
 
 // ---------------------------------------------------------------------------
