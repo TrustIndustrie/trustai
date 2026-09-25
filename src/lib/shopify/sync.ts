@@ -223,10 +223,16 @@ export async function upsertOrder(
       if (error) throw new Error(`payments: ${error.message}`);
     }
   } else if (existingPayment) {
-    await supabase
+    // Si cette suppression échoue, le webhook ne doit SURTOUT pas être
+    // acquitté : Shopify ne le rejouera pas, et l'encaissement remboursé
+    // continuerait de gonfler les recettes sans que personne le sache.
+    const { error: deleteError } = await supabase
       .from("payments")
       .delete()
       .eq("id", (existingPayment as { id: string }).id);
+    if (deleteError) {
+      throw new Error(`payments (remboursement) : ${deleteError.message}`);
+    }
     await supabase.from("activity_logs").insert({
       organization_id: organizationId,
       actor_label: "Webhook Shopify",
