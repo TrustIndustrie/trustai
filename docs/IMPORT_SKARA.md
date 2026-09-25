@@ -106,6 +106,23 @@ il suffit de changer le sélecteur et de relancer. Rien n'est écrit.
 Le journal comptable n'a pas d'en-tête : il n'est pas reconnaissable et
 aucune affirmation n'est faite à son sujet.
 
+## Qui voit quoi
+
+Les fonctions de lecture Skara sont `security definer` : elles contournent la
+sécurité au niveau des lignes, le cloisonnement doit donc y être écrit
+explicitement. Depuis la migration 17, il l'est.
+
+* Un profil ayant `voir_tous_magasins` (direction, administrateur) lit tout.
+* Un `responsable_magasin` ne lit que les magasins qui lui sont accordés dans
+  `user_store_access`. Demander un autre magasin ne renvoie pas une liste
+  vide, qui laisserait croire à une absence de données : c'est un refus franc.
+* Le **journal comptable** ne porte pas le magasin. Il n'est donc pas
+  cloisonnable, et n'est servi qu'à la vision globale. L'écran de contrôle le
+  dit, plutôt que d'afficher un journal vide.
+
+Un profil sans aucun magasin accordé ne voit rien. C'est volontaire : avant
+la migration 17, l'absence d'accès valait accès à tout.
+
 ## Consultation et contrôle
 
 Deux écrans lisent ce qui a été importé, sans jamais rien modifier.

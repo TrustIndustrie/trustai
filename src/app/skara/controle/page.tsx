@@ -57,7 +57,13 @@ interface Article {
 }
 
 interface Donnees {
-  controle: { stores: MoisMagasin[]; journal: MoisJournal[] };
+  controle: {
+    stores: MoisMagasin[];
+    journal: MoisJournal[];
+    /** Faux quand le profil n'a pas la vision globale : le journal comptable
+     *  ne porte pas le magasin, il ne peut donc pas être cloisonné. */
+    journal_visible?: boolean;
+  };
   articles: {
     totals: { articles: number; sans_cout: number; reconstruits: number; fournis: number };
     rows: Article[];
@@ -91,6 +97,7 @@ export default function ControleSkaraPage() {
   if (!donnees) return <LoadingState />;
 
   const { stores, journal } = donnees.controle;
+  const journalVisible = donnees.controle.journal_visible !== false;
   const mois = Array.from(new Set(stores.map((s) => s.mois))).sort().reverse();
 
   return (
@@ -193,9 +200,9 @@ export default function ControleSkaraPage() {
                     </div>
                   ) : (
                     <p style={{ color: "var(--muted)" }}>
-                      Aucune écriture comptable importée pour ce mois. Le
-                      recoupement est impossible : retéléchargez le journal
-                      depuis l&apos;historique de Skara.
+                      {journalVisible
+                        ? "Aucune écriture comptable importée pour ce mois. Le recoupement est impossible : retéléchargez le journal depuis l'historique de Skara."
+                        : "Le journal comptable ne distingue pas les magasins : il n'est donc montré qu'aux profils ayant la vision de tous les magasins. Le recoupement n'est pas disponible ici."}
                     </p>
                   )}
                 </div>

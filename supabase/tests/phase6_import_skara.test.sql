@@ -43,6 +43,12 @@ insert into public.profiles (id, organization_id, display_name, role) values
 update public.stores set skara_invoice_prefix = 'FL'
 where id = '00000000-0000-4000-a000-000000000201';
 
+-- Le responsable de magasin n'a accès QU'À Lisses. Depuis la migration 17,
+-- un profil sans magasin accordé ne voit plus rien : l'absence d'accès ne
+-- vaut plus accès à tout.
+insert into public.user_store_access (profile_id, store_id) values
+  ('a1000000-0000-4000-a100-000000000003', '00000000-0000-4000-a000-000000000201');
+
 create temporary table ctx as
 select null::uuid as import1, null::uuid as import2, null::uuid as journal;
 grant all on ctx to authenticated;
@@ -348,9 +354,17 @@ begin
   -- Cinq imports ont abouti : deux listes de factures de Lisses, une de
   -- Herblay, un journal, un catalogue. Les quatre fichiers refusés n'ont
   -- laissé aucune trace.
+  --
+  -- Ce responsable n'a que Lisses. Il en voit donc QUATRE : ses deux listes,
+  -- plus le journal et le catalogue, qui ne portent aucun magasin et donc
+  -- aucun chiffre par magasin. La liste de Herblay lui est masquée.
   v_list := public.list_skara_imports();
-  if jsonb_array_length(v_list) <> 5 then
-    raise exception 'ÉCHEC 8 : % import(s) visible(s) au lieu de 5', jsonb_array_length(v_list);
+  if jsonb_array_length(v_list) <> 4 then
+    raise exception 'ÉCHEC 8 : % import(s) visible(s) au lieu de 4', jsonb_array_length(v_list);
+  end if;
+  if exists (select 1 from jsonb_array_elements(v_list) e
+             where e->>'store_name' = 'Trust Herblay') then
+    raise exception 'ÉCHEC 8 : l''import de Herblay a fuité vers Lisses';
   end if;
 end $$;
 reset role;
