@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   computeNetCost,
+  detectFileKind,
   isBlocked,
+  mismatchAnomaly,
   parseArticles,
   parseInvoiceList,
   parseInvoiceLines,
@@ -363,5 +365,46 @@ describe("Journal comptable", () => {
     const vide = parseJournal("");
     expect(isBlocked(vide.anomalies)).toBe(true);
     expect(vide.anomalies[0].message).toContain("Historique");
+  });
+});
+
+describe("Reconnaissance de la nature réelle du fichier", () => {
+  const listeHeader =
+    "NUMERO FACTURE;DATE;CLIENT;VENDEUR;TOTAL TTC;TOTAL HT;TVA;MARGE;RESTE A REGLER;ECO TTC;SERVICE TTC";
+  const lignesHeader =
+    "NUMERO FACTURE;DATE;LIBELLE PRODUIT;REFERENCE;QUANTITE;PRIX UNITAIRE;PRIX TOTAL";
+
+  it("sépare la liste des factures des lignes de factures", () => {
+    expect(detectFileKind(`${listeHeader}\r\nFM20260900479;01-09-2026;M X;;799.00`)).toBe(
+      "liste_factures",
+    );
+    expect(detectFileKind(`${lignesHeader}\r\nFM20260900479;01-09-2026;Table;REF;1;799;799`)).toBe(
+      "lignes_factures",
+    );
+  });
+
+  it("reconnaît le catalogue, séparé par des virgules, et le BOM", () => {
+    expect(detectFileKind("﻿pk_fournisseur,reference,libelle")).toBe("catalogue");
+  });
+
+  it("n'affirme rien sur le journal, qui n'a pas d'en-tête", () => {
+    expect(detectFileKind("VE;01-09-2026;C001;411000;FM001;Vente;799;0;EUR")).toBeNull();
+    expect(detectFileKind("")).toBeNull();
+  });
+
+  it("bloque et nomme la nature attendue quand le sélecteur est faux", () => {
+    const anomaly = mismatchAnomaly("lignes_factures", listeHeader);
+    expect(anomaly?.severity).toBe("bloquant");
+    expect(anomaly?.message).toContain("« Liste des factures »");
+    expect(anomaly?.message).toContain("« Lignes de factures »");
+    expect(anomaly?.payload).toEqual({
+      choisi: "lignes_factures",
+      reconnu: "liste_factures",
+    });
+  });
+
+  it("laisse passer un fichier de la nature choisie", () => {
+    expect(mismatchAnomaly("liste_factures", listeHeader)).toBeNull();
+    expect(mismatchAnomaly("journal_comptable", "VE;01-09-2026;C001;411000;P;L;1;0;EUR")).toBeNull();
   });
 });

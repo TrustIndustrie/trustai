@@ -51,6 +51,8 @@ export const PAGE_ACCESS: PageAccess[] = [
   { href: "/validations", permissions: ["valider_decision"] },
   { href: "/compte", permissions: null },
   { href: "/skara/import", permissions: ["administrer"] },
+  { href: "/skara/factures", permissions: ["voir_acquisition"] },
+  { href: "/skara/controle", permissions: ["voir_acquisition"] },
   { href: "/parametres/archives", permissions: ["administrer"] },
   // --- Modules archivés (hors menu principal) ---
   { href: "/achats", permissions: ["gerer_achats"], archived: true },

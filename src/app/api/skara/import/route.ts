@@ -4,6 +4,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { requirePermission } from "@/lib/auth/serverGuard";
 import {
   isBlocked,
+  mismatchAnomaly,
   parseArticles,
   parseInvoiceList,
   parseInvoiceLines,
@@ -127,6 +128,18 @@ export async function POST(request: Request) {
   const contentHash = createHash("sha256").update(Buffer.from(buffer)).digest("hex");
 
   const parsed = parseByKind(kind, content);
+
+  // Reconnaissance de la nature réelle : deux exports Skara commencent par la
+  // même colonne, et se tromper de sélecteur est l'erreur la plus facile à
+  // commettre. On le dit AVANT l'en-tête inattendue, qui n'explique rien.
+  const mismatch = mismatchAnomaly(kind, content);
+  if (mismatch) {
+    parsed.anomalies = [
+      mismatch,
+      ...parsed.anomalies.filter((a) => a.kind !== "entete_inattendue"),
+    ];
+  }
+
   const summary = summarize(parsed);
 
   if (parsed.rows.length > MAX_ROWS) {
