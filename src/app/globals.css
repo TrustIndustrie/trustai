@@ -1,0 +1,113 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Palette TRUST AI — identité Trust Industrie : beige chaud et noir,
+ * alignée sur trust-industrie.com et le logo de la marque.
+ * Toutes les couleurs passent par des variables CSS pour pouvoir être
+ * ajustées facilement sans toucher aux composants. Les couleurs d'état
+ * (succès, alerte, danger…) restent des teintes universelles pour ne pas
+ * perdre leur lisibilité métier.
+ */
+:root {
+  --background: #eae2d2;
+  --surface: #f7f3e9;
+  --surface-muted: #efe8d8;
+  --border: #d9cfb9;
+  --foreground: #161513;
+  --muted: #6e6654;
+  --primary: #161513;
+  --primary-strong: #000000;
+  --primary-soft: #e0d7c0;
+  --logo-beige: #e8dfce;
+  --success: #15803d;
+  --success-soft: #e4efdd;
+  --warning: #b45309;
+  --warning-soft: #f6ead2;
+  --danger: #b91c1c;
+  --danger-soft: #f6e2da;
+  --info: #0369a1;
+  --info-soft: #e2ecec;
+  --violet: #6d28d9;
+  --violet-soft: #eae3e8;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  font-feature-settings: "tnum";
+}
+
+/* Tableaux lisibles par défaut */
+.table-base {
+  @apply w-full text-sm;
+}
+.table-base thead th {
+  @apply px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-muted);
+}
+.table-base tbody td {
+  @apply px-3 py-3 align-top;
+  border-bottom: 1px solid var(--border);
+}
+.table-base tbody tr:last-child td {
+  border-bottom: none;
+}
+.table-base tbody tr:hover {
+  background: var(--surface-muted);
+}
+
+/* Champs de formulaire */
+.field-label {
+  @apply mb-1 block text-sm font-medium;
+  color: var(--foreground);
+}
+.field-input {
+  @apply w-full rounded-md border px-3 py-2 text-sm outline-none transition;
+  border-color: var(--border);
+  background: var(--surface);
+  color: var(--foreground);
+}
+.field-input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-soft);
+}
+.field-hint {
+  @apply mt-1 text-xs;
+  color: var(--muted);
+}
+
+.btn-primary {
+  @apply inline-flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-50;
+  background: var(--primary);
+}
+.btn-primary:hover:not(:disabled) {
+  background: var(--primary-strong);
+}
+.btn-secondary {
+  @apply inline-flex items-center justify-center gap-2 rounded-md border px-4 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50;
+  border-color: var(--border);
+  background: var(--surface);
+  color: var(--foreground);
+}
+.btn-secondary:hover:not(:disabled) {
+  background: var(--surface-muted);
+}
+.btn-danger {
+  @apply inline-flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-50;
+  background: var(--danger);
+}
+
+.card {
+  @apply rounded-lg border;
+  border-color: var(--border);
+  background: var(--surface);
+}
