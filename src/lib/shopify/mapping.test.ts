@@ -239,3 +239,46 @@ describe("Mapping d'un produit Shopify", () => {
     expect(categoryFromProductType("Canapé-lit")).toBe("canapes");
   });
 });
+
+describe("Encaissement partiel : acompte et remboursement ne se confondent pas", () => {
+  it("déduit l'acompte du reste dû, sans prendre le total pour un paiement", () => {
+    // Commande de 1 638 €, acompte de 500 € : reste dû 1 138 €.
+    const mapped = mapOrderPayload({
+      ...orderPayload,
+      financial_status: "partially_paid",
+      current_total_price: "1638.00",
+      total_outstanding: "1138.00",
+    });
+    expect(mapped.paidCents).toBe(50000);
+  });
+
+  it("n'enregistre rien plutôt que d'inventer, si le reste dû est absent", () => {
+    const mapped = mapOrderPayload({
+      ...orderPayload,
+      financial_status: "partially_paid",
+      current_total_price: "1638.00",
+    });
+    expect(mapped.paidCents).toBe(0);
+  });
+
+  it("garde le total courant comme net encaissé après remboursement partiel", () => {
+    // Payée 1 638 € puis remboursée de 138 € : 1 500 € restent encaissés.
+    const mapped = mapOrderPayload({
+      ...orderPayload,
+      financial_status: "partially_refunded",
+      current_total_price: "1500.00",
+      total_outstanding: "0.00",
+    });
+    expect(mapped.paidCents).toBe(150000);
+  });
+
+  it("ne descend jamais sous zéro si le reste dû dépasse le total", () => {
+    const mapped = mapOrderPayload({
+      ...orderPayload,
+      financial_status: "partially_paid",
+      current_total_price: "100.00",
+      total_outstanding: "250.00",
+    });
+    expect(mapped.paidCents).toBe(0);
+  });
+});

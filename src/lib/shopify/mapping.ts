@@ -213,14 +213,30 @@ export function mapOrderPayload(payload: Payload): MappedOrder {
   const source = acquisitionSourceFromJourney(payload.landing_site, payload.referring_site);
 
   const financial = payload.financial_status as string | undefined;
-  // Net encaissé selon Shopify : après remboursement partiel, Shopify
-  // expose le total courant (current_total_price). « refunded » et
-  // « voided » → plus rien d'encaissé.
+  // Net encaissé selon Shopify. Deux cas se ressemblent mais ne se traitent
+  // pas pareil :
+  //
+  //   * « partially_refunded » : la commande est payée puis partiellement
+  //     remboursée. `current_total_price` EST le net encaissé.
+  //   * « partially_paid » : la commande n'est payée qu'en partie.
+  //     `current_total_price` reste la VALEUR DE LA COMMANDE, pas la somme
+  //     reçue. L'encaissé se déduit du reste dû, `total_outstanding`.
+  //
+  // Confondre les deux enregistre un acompte de 20 € comme un paiement de
+  // 100 €, met le reste à percevoir à zéro et gonfle les recettes.
   let paidCents = 0;
-  if (financial === "paid") {
+  if (financial === "paid" || financial === "partially_refunded") {
     paidCents = moneyStringToCents(payload.current_total_price ?? payload.total_price);
-  } else if (financial === "partially_refunded" || financial === "partially_paid") {
-    paidCents = moneyStringToCents(payload.current_total_price ?? payload.total_price);
+  } else if (financial === "partially_paid") {
+    const total = moneyStringToCents(payload.current_total_price ?? payload.total_price);
+    const outstanding = payload.total_outstanding;
+    // Sans reste dû exploitable, on n'invente pas de montant : aucun
+    // encaissement n'est enregistré, et le reste à percevoir reste entier.
+    // Sous-estimer une recette se voit et se corrige ; la surestimer, non.
+    paidCents =
+      typeof outstanding === "string" && outstanding.trim() !== ""
+        ? Math.max(0, total - moneyStringToCents(outstanding))
+        : 0;
   }
   const cancelled = Boolean(payload.cancelled_at);
   if (cancelled && (financial === "refunded" || financial === "voided")) {
