@@ -10,7 +10,10 @@
 --      et l'écart s'explique par les pièces non émises ;
 --   5. les articles sans coût sont listés par impact décroissant ;
 --   6. permissions : « logistique » ne lit rien ;
---   7. isolation : une autre organisation ne voit rien.
+--   7. isolation : une autre organisation ne voit rien ;
+--   8. cloisonnement (migration 17) : un responsable de magasin ne lit que
+--      les magasins qui lui sont accordés, et le journal comptable, qui ne
+--      porte pas le magasin, lui est masqué.
 --
 -- Le script se termine par un ROLLBACK : il ne laisse AUCUNE donnée.
 -- ===========================================================================
@@ -39,6 +42,14 @@ insert into public.profiles (id, organization_id, display_name, role) values
 
 update public.stores set skara_invoice_prefix = 'FL'
 where id = '00000000-0000-4000-a000-000000000201';
+update public.stores set skara_invoice_prefix = 'FH'
+where id = '00000000-0000-4000-a000-000000000202';
+
+-- Le responsable de magasin n'a accès QU'À Lisses. Sans cette ligne, il ne
+-- voit rien : depuis la migration 17, un profil sans magasin accordé n'est
+-- plus un profil qui voit tout.
+insert into public.user_store_access (profile_id, store_id) values
+  ('d1000000-0000-4000-d100-000000000002', '00000000-0000-4000-a000-000000000201');
 
 create temporary table ctx as
 select null::uuid as facture, null::uuid as avoir;
@@ -350,6 +361,116 @@ begin
     if sqlstate <> '42501' then raise; end if;
   end;
   raise notice 'OK 6 et 7 : permissions et isolation tenues.';
+end $$;
+reset role;
+
+-- ---------------------------------------------------------------------------
+-- 8. Cloisonnement par magasin (migration 17)
+--
+-- L'administrateur dépose une pièce sur HERBLAY. Le responsable de LISSES ne
+-- doit ni la compter, ni pouvoir la demander, ni obtenir le journal.
+-- ---------------------------------------------------------------------------
+set role authenticated;
+set local "request.jwt.claim.sub" = 'd1000000-0000-4000-d100-000000000001';
+do $$
+begin
+  perform public.import_skara_file(jsonb_build_object(
+    'kind', 'liste_factures',
+    'store_id', '00000000-0000-4000-a000-000000000202',
+    'file_name', 'herblay.csv', 'content_hash', 'cloisonnement-herblay',
+    'period', jsonb_build_object('start', '2026-09-03', 'end', '2026-09-03'),
+    'prefixes', jsonb_build_array('FH'),
+    'rows', jsonb_build_array(
+      jsonb_build_object('doc_type', 'facture', 'number', 'FH20260900001',
+        'row_key', 'FH20260900001', 'accounting_state', 'non_exportee',
+        'date', '2026-09-03', 'client_label', 'Client Herblay',
+        'seller_label', 'Vendeur H', 'total_ttc', '1000.00',
+        'total_ht', '833.333', 'vat', '166.667', 'margin_skara', '400.000',
+        'remaining_due', '0')),
+    'anomalies', '[]'::jsonb));
+end $$;
+reset role;
+
+alter table ctx add column herblay uuid;
+update ctx set herblay = (select id from public.skara_invoices
+                          where number = 'FH20260900001');
+
+set role authenticated;
+set local "request.jwt.claim.sub" = 'd1000000-0000-4000-d100-000000000002';
+do $$
+declare v_ctx record; v_list jsonb; v_ctrl jsonb;
+begin
+  select * into v_ctx from ctx;
+
+  -- Sans filtre : la pièce d'Herblay ne doit PAS entrer dans les totaux.
+  v_list := public.list_skara_invoices('{}'::jsonb);
+  if (v_list->'totals'->>'pieces')::int <> 4 then
+    raise exception 'ÉCHEC 8 : % pièce(s) au lieu de 4, Herblay a fuité',
+      v_list->'totals'->>'pieces';
+  end if;
+  if (v_list->'totals'->>'ttc')::numeric <> 1271 then
+    raise exception 'ÉCHEC 8 : total % au lieu de 1271, Herblay a fuité',
+      v_list->'totals'->>'ttc';
+  end if;
+
+  -- Magasin explicitement demandé mais non accordé : REFUS franc, pas une
+  -- réponse vide qui laisserait croire à une absence de données.
+  begin
+    perform public.list_skara_invoices(jsonb_build_object(
+      'store_id', '00000000-0000-4000-a000-000000000202'));
+    raise exception 'ÉCHEC 8 : un magasin non accordé a été accepté';
+  exception when others then
+    if sqlstate <> '42501' then raise; end if;
+  end;
+
+  -- La pièce elle-même, demandée par son identifiant, reste refusée.
+  begin
+    perform public.get_skara_invoice(v_ctx.herblay);
+    raise exception 'ÉCHEC 8 : pièce d''un autre magasin lue par identifiant';
+  exception when others then
+    if sqlstate <> '42501' then raise; end if;
+  end;
+
+  -- Contrôle mensuel : un seul magasin, et journal masqué.
+  v_ctrl := public.get_skara_monthly_control(null, null);
+  if exists (select 1 from jsonb_array_elements(v_ctrl->'stores') e
+             where e->>'magasin' = 'Trust Herblay') then
+    raise exception 'ÉCHEC 8 : Herblay apparaît dans le contrôle mensuel';
+  end if;
+  if (v_ctrl->>'journal_visible')::boolean is not false then
+    raise exception 'ÉCHEC 8 : journal annoncé visible sans vision globale';
+  end if;
+  if jsonb_array_length(v_ctrl->'journal') <> 0 then
+    raise exception 'ÉCHEC 8 : le journal comptable a fuité';
+  end if;
+
+  -- L'historique des imports ne montre pas celui d'Herblay.
+  if exists (select 1 from jsonb_array_elements(public.list_skara_imports(50)) e
+             where e->>'file_name' = 'herblay.csv') then
+    raise exception 'ÉCHEC 8 : import d''un autre magasin visible';
+  end if;
+end $$;
+reset role;
+
+-- L'administrateur, lui, voit les deux magasins et son journal.
+set role authenticated;
+set local "request.jwt.claim.sub" = 'd1000000-0000-4000-d100-000000000001';
+do $$
+declare v_list jsonb; v_ctrl jsonb;
+begin
+  v_list := public.list_skara_invoices('{}'::jsonb);
+  if (v_list->'totals'->>'pieces')::int <> 5 then
+    raise exception 'ÉCHEC 8 : l''administrateur voit % pièce(s) au lieu de 5',
+      v_list->'totals'->>'pieces';
+  end if;
+  v_ctrl := public.get_skara_monthly_control(null, null);
+  if (v_ctrl->>'journal_visible')::boolean is not true then
+    raise exception 'ÉCHEC 8 : journal masqué à la vision globale';
+  end if;
+  if jsonb_array_length(v_ctrl->'journal') = 0 then
+    raise exception 'ÉCHEC 8 : journal vide pour la vision globale';
+  end if;
+  raise notice 'OK 8 : cloisonnement par magasin tenu, journal réservé.';
 end $$;
 reset role;
 

@@ -231,7 +231,8 @@ jobs:
                                    'forbid_update_delete','assert_same_org',
                                    'close_sync_anomalies','line_row_hash',
                                    'skara_write_invoices','skara_write_invoice_lines',
-                                   'skara_write_articles','skara_write_journal');
+                                   'skara_write_articles','skara_write_journal',
+                                   'allowed_store_ids');
             if v <> 0 then
               raise exception 'Fonctions internes app.* encore exposées : %', v;
             end if;
@@ -355,6 +356,7 @@ jobs:
              where role in ('responsable_logistique','livreur')"
           # Les retours arrière se déroulent dans l'ordre inverse des
           # migrations : la plus récente d'abord, le socle en dernier.
+          psql -v ON_ERROR_STOP=1 -q -f supabase/rollbacks/ROLLBACK_20260925001700_skara_cloisonnement_magasin.sql
           psql -v ON_ERROR_STOP=1 -q -f supabase/rollbacks/ROLLBACK_20260924001600_skara_lecture.sql
           psql -v ON_ERROR_STOP=1 -q -f supabase/rollbacks/ROLLBACK_20260924001500_import_skara.sql
           psql -v ON_ERROR_STOP=1 -q -f supabase/rollbacks/ROLLBACK_20260918001300_resolution_anomalies.sql
