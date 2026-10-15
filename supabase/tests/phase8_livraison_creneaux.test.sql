@@ -206,12 +206,17 @@ reset role;
 
 -- ===========================================================================
 -- 4, 5. Autorisation, partiel assumé, et la porte avant les créneaux
+--
+-- Les tables sont VERROUILLÉES : aucun rôle connecté ne les lit en direct.
+-- Les vérifications passent donc par les fonctions, comme l'application. Les
+-- rares colonnes qu'aucune fonction n'expose sont contrôlées plus bas, hors
+-- rôle applicatif.
 -- ===========================================================================
 set role authenticated;
 set local "request.jwt.claim.sub" = 'e1000000-0000-4000-e100-000000000001';
 
 do $$
-declare v_res jsonb; v_job public.delivery_jobs%rowtype;
+declare v_res jsonb; v_dossier jsonb;
 begin
   -- Aucun créneau avant autorisation.
   begin
@@ -253,14 +258,16 @@ begin
   if (v_res->>'partielle')::boolean is not true then
     raise exception 'ÉCHEC 4 : partiel non signalé en retour %', v_res;
   end if;
-  select * into v_job from public.delivery_jobs
-   where id = 'e3000000-0000-4000-e300-000000000002';
-  if v_job.stage <> 'pret_a_contacter'
-     or v_job.contact_authorized_at is null
-     or v_job.contact_authorized_by <> 'e1000000-0000-4000-e100-000000000001'
-     or not v_job.contact_authorized_partial then
-    raise exception 'ÉCHEC 4 : autorisation partielle mal tracée (étape %, partiel %)',
-      v_job.stage, v_job.contact_authorized_partial;
+
+  v_dossier := public.get_delivery_readiness('e3000000-0000-4000-e300-000000000002');
+  if v_dossier->>'stage' <> 'pret_a_contacter'
+     or v_dossier->>'contact_authorized_at' is null
+     or (v_dossier->>'contact_authorized_partial')::boolean is not true then
+    raise exception 'ÉCHEC 4 : autorisation partielle mal tracée %', v_dossier;
+  end if;
+  if v_dossier->>'contact_authorization_note' <> 'Client pressé, chaises plus tard.' then
+    raise exception 'ÉCHEC 4 : note de validation perdue %',
+      v_dossier->>'contact_authorization_note';
   end if;
 
   -- Complet : accepté sans rien assumer.
@@ -273,16 +280,27 @@ begin
 end $$;
 reset role;
 
+-- Colonne qu'aucune fonction n'expose : l'auteur de la validation. Lecture
+-- hors rôle applicatif, puisque la table est verrouillée pour tous.
+do $$
+declare v_by uuid;
+begin
+  select contact_authorized_by into v_by from public.delivery_jobs
+   where id = 'e3000000-0000-4000-e300-000000000002';
+  if v_by <> 'e1000000-0000-4000-e100-000000000001' then
+    raise exception 'ÉCHEC 4 : validation attribuée à % au lieu du responsable', v_by;
+  end if;
+end $$;
+
 -- ===========================================================================
--- 6, 7, 8. Créneaux : propositions, confirmation, refus
+-- 6, 7. Créneaux : propositions et confirmation
 -- ===========================================================================
 set role authenticated;
 set local "request.jwt.claim.sub" = 'e1000000-0000-4000-e100-000000000001';
 
 do $$
 declare
-  v_res jsonb; v_job public.delivery_jobs%rowtype;
-  v_slot uuid; v_count integer;
+  v_res jsonb; v_creneaux jsonb; v_slot uuid; v_count integer;
 begin
   -- Date passée : refusée.
   begin
@@ -317,6 +335,13 @@ begin
     if sqlstate <> '22023' then raise; end if;
   end;
 
+  -- Aucun de ces refus n'a laissé de trace.
+  v_creneaux := public.get_delivery_readiness('e3000000-0000-4000-e300-000000000001')->'creneaux';
+  if jsonb_array_length(v_creneaux) <> 0 then
+    raise exception 'ÉCHEC 6 : % créneau(x) écrit(s) malgré le refus',
+      jsonb_array_length(v_creneaux);
+  end if;
+
   -- Trois créneaux légitimes.
   v_res := public.propose_delivery_slots(
     'e3000000-0000-4000-e300-000000000001',
@@ -336,32 +361,38 @@ begin
     jsonb_build_array(
       jsonb_build_object('date', (current_date + 10)::text, 'fenetre', 'matin', 'rang', 1),
       jsonb_build_object('date', (current_date + 11)::text, 'fenetre', 'matin', 'rang', 2)));
-  select count(*) into v_count from public.delivery_slots
-   where delivery_job_id = 'e3000000-0000-4000-e300-000000000001' and status = 'caduque';
+
+  v_creneaux := public.get_delivery_readiness('e3000000-0000-4000-e300-000000000001')->'creneaux';
+  select count(*) into v_count from jsonb_array_elements(v_creneaux) e
+   where e->>'statut' = 'caduque';
   if v_count <> 3 then
     raise exception 'ÉCHEC 6 : % ancienne(s) proposition(s) caduque(s) au lieu de 3', v_count;
   end if;
-  select count(*) into v_count from public.delivery_slots
-   where delivery_job_id = 'e3000000-0000-4000-e300-000000000001' and status = 'proposee';
+  select count(*) into v_count from jsonb_array_elements(v_creneaux) e
+   where e->>'statut' = 'proposee';
   if v_count <> 2 then
     raise exception 'ÉCHEC 6 : % proposition(s) vivante(s) au lieu de 2', v_count;
   end if;
 
   -- Le client choisit : les autres tombent, il n'en reste qu'un retenu.
-  select id into v_slot from public.delivery_slots
-   where delivery_job_id = 'e3000000-0000-4000-e300-000000000001'
-     and status = 'proposee' and rank = 2;
+  select (e->>'id')::uuid into v_slot from jsonb_array_elements(v_creneaux) e
+   where e->>'statut' = 'proposee' and (e->>'rang')::int = 2;
+  if v_slot is null then
+    raise exception 'ÉCHEC 7 : créneau de rang 2 introuvable';
+  end if;
   v_res := public.confirm_delivery_slot(v_slot, 'Confirmé au téléphone.');
   if v_res->>'stage' <> 'creneau_confirme' then
     raise exception 'ÉCHEC 7 : étape après confirmation : %', v_res->>'stage';
   end if;
-  select count(*) into v_count from public.delivery_slots
-   where delivery_job_id = 'e3000000-0000-4000-e300-000000000001' and status = 'retenue';
+
+  v_creneaux := public.get_delivery_readiness('e3000000-0000-4000-e300-000000000001')->'creneaux';
+  select count(*) into v_count from jsonb_array_elements(v_creneaux) e
+   where e->>'statut' = 'retenue';
   if v_count <> 1 then
     raise exception 'ÉCHEC 7 : % créneau(x) retenu(s) au lieu d''un seul', v_count;
   end if;
-  select count(*) into v_count from public.delivery_slots
-   where delivery_job_id = 'e3000000-0000-4000-e300-000000000001' and status = 'proposee';
+  select count(*) into v_count from jsonb_array_elements(v_creneaux) e
+   where e->>'statut' = 'proposee';
   if v_count <> 0 then
     raise exception 'ÉCHEC 7 : % proposition(s) survivante(s) après confirmation', v_count;
   end if;
@@ -377,9 +408,11 @@ begin
   raise notice 'OK 6 et 7 : créneaux contrôlés, confirmation exclusive.';
 end $$;
 
--- Le refus : motif obligatoire, retour en arrière propre.
+-- ===========================================================================
+-- 8. Refus : motif obligatoire, retour en arrière propre
+-- ===========================================================================
 do $$
-declare v_res jsonb; v_job public.delivery_jobs%rowtype; v_count integer;
+declare v_res jsonb; v_dossier jsonb; v_count integer;
 begin
   perform public.propose_delivery_slots(
     'e3000000-0000-4000-e300-000000000002',
@@ -398,17 +431,17 @@ begin
      or v_res->>'stage' <> 'pret_a_contacter' then
     raise exception 'ÉCHEC 8 : refus mal enregistré %', v_res;
   end if;
-  select * into v_job from public.delivery_jobs
-   where id = 'e3000000-0000-4000-e300-000000000002';
-  if v_job.stage <> 'pret_a_contacter' then
-    raise exception 'ÉCHEC 8 : étape après refus : %', v_job.stage;
+
+  v_dossier := public.get_delivery_readiness('e3000000-0000-4000-e300-000000000002');
+  if v_dossier->>'stage' <> 'pret_a_contacter' then
+    raise exception 'ÉCHEC 8 : étape après refus : %', v_dossier->>'stage';
   end if;
   -- L'autorisation reste acquise : inutile de revalider pour reproposer.
-  if v_job.contact_authorized_at is null then
+  if v_dossier->>'contact_authorized_at' is null then
     raise exception 'ÉCHEC 8 : l''autorisation a été perdue au refus';
   end if;
-  select count(*) into v_count from public.delivery_slots
-   where delivery_job_id = 'e3000000-0000-4000-e300-000000000002' and status = 'refusee';
+  select count(*) into v_count from jsonb_array_elements(v_dossier->'creneaux') e
+   where e->>'statut' = 'refusee';
   if v_count <> 1 then
     raise exception 'ÉCHEC 8 : % créneau(x) refusé(s) au lieu de 1', v_count;
   end if;
