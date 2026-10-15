@@ -195,7 +195,7 @@ jobs:
                 'sensitive_access_logs','logistics_anomaly_decisions',
                 'skara_imports','skara_invoices','skara_invoice_lines',
                 'skara_articles','skara_journal_entries','skara_import_anomalies',
-                'delivery_slots');
+                'delivery_slots','delivery_rounds','delivery_round_stops');
             if v <> 0 then raise exception 'Droits directs restants : %', v; end if;
 
             select count(*) into v from pg_class c
@@ -208,8 +208,8 @@ jobs:
                 'sensitive_access_logs','logistics_anomaly_decisions',
                 'skara_imports','skara_invoices','skara_invoice_lines',
                 'skara_articles','skara_journal_entries','skara_import_anomalies',
-                'delivery_slots');
-            if v <> 21 then raise exception 'RLS active sur % tables au lieu de 21', v; end if;
+                'delivery_slots','delivery_rounds','delivery_round_stops');
+            if v <> 23 then raise exception 'RLS active sur % tables au lieu de 23', v; end if;
 
             select count(*) into v from information_schema.routine_privileges
             where routine_schema='public' and grantee in ('anon','PUBLIC')
@@ -223,7 +223,12 @@ jobs:
                                    'list_skara_articles_without_cost',
                                    'list_delivery_jobs','get_delivery_readiness',
                                    'authorize_delivery_contact','propose_delivery_slots',
-                                   'confirm_delivery_slot','decline_delivery_slots');
+                                   'confirm_delivery_slot','decline_delivery_slots',
+                                   'create_delivery_round','add_round_stop',
+                                   'remove_round_stop','reorder_round_stops',
+                                   'plan_delivery_round','start_delivery_round',
+                                   'record_round_stop_outcome','list_delivery_rounds',
+                                   'get_delivery_round','list_round_candidates');
             if v <> 0 then raise exception 'Exécution ouverte à anon/PUBLIC : %', v; end if;
 
             -- Les fonctions INTERNES (schéma app) ne sont appelables ni par
@@ -285,6 +290,11 @@ jobs:
         run: |
           set -euo pipefail
           psql -v ON_ERROR_STOP=1 -f supabase/tests/phase8_livraison_creneaux.test.sql
+
+      - name: Tests des tournées de livraison (phase 9)
+        run: |
+          set -euo pipefail
+          psql -v ON_ERROR_STOP=1 -f supabase/tests/phase9_tournees.test.sql
 
       - name: Test de concurrence (suraffectation impossible)
         run: |
@@ -366,6 +376,7 @@ jobs:
              where role in ('responsable_logistique','livreur')"
           # Les retours arrière se déroulent dans l'ordre inverse des
           # migrations : la plus récente d'abord, le socle en dernier.
+          psql -v ON_ERROR_STOP=1 -q -f supabase/rollbacks/ROLLBACK_20261015001900_tournees_livraison.sql
           psql -v ON_ERROR_STOP=1 -q -f supabase/rollbacks/ROLLBACK_20261015001800_livraison_disponibilite_creneaux.sql
           psql -v ON_ERROR_STOP=1 -q -f supabase/rollbacks/ROLLBACK_20260925001700_skara_cloisonnement_magasin.sql
           psql -v ON_ERROR_STOP=1 -q -f supabase/rollbacks/ROLLBACK_20260924001600_skara_lecture.sql
@@ -398,6 +409,17 @@ jobs:
             where table_schema='public' and table_name='stores'
               and column_name='skara_invoice_prefix';
             if v <> 0 then raise exception 'Colonne de préfixe (migration 15) restante'; end if;
+            select count(*) into v from information_schema.tables
+            where table_schema='public'
+              and table_name in ('delivery_rounds','delivery_round_stops');
+            if v <> 0 then raise exception 'Tables de tournées (migration 19) restantes : %', v; end if;
+            select count(*) into v from information_schema.routines
+            where routine_schema='public' and routine_name in (
+              'create_delivery_round','add_round_stop','remove_round_stop',
+              'reorder_round_stops','plan_delivery_round','start_delivery_round',
+              'record_round_stop_outcome','list_delivery_rounds',
+              'get_delivery_round','list_round_candidates');
+            if v <> 0 then raise exception 'Fonctions de tournées restantes : %', v; end if;
             select count(*) into v from information_schema.tables
             where table_schema='public' and table_name = 'delivery_slots';
             if v <> 0 then raise exception 'Table des créneaux (migration 18) restante'; end if;
