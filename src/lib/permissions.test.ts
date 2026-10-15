@@ -105,20 +105,38 @@ describe("Socle logistique (phase 1)", () => {
     expect(permissions.size).toBe(18);
   });
 
-  it("le livreur ne détient AUCUNE permission en phase 1 (décision E18)", () => {
-    expect(ROLE_PERMISSIONS.livreur).toEqual([]);
-    const sensibles = [
-      "gerer_livraisons",
+  it("le livreur a strictement de quoi livrer, et rien de plus (migration 20)", () => {
+    // La décision E18 fermait tout au livreur tant que les tournées
+    // n'existaient pas. Elles existent : il reçoit deux permissions, pesées
+    // une par une, et cette liste doit rester le miroir exact de
+    // app.role_permissions côté base.
+    expect(ROLE_PERMISSIONS.livreur).toEqual([
       "voir_coordonnees_client",
-      "voir_montants_livraison",
       "executer_livraison",
+    ]);
+
+    // Ce dont il a besoin : l'adresse pour livrer, le droit de constater.
+    expect(hasPermission("livreur", "voir_coordonnees_client")).toBe(true);
+    expect(hasPermission("livreur", "executer_livraison")).toBe(true);
+
+    // Ce qu'il n'a pas. Les montants à encaisser en premier : exposer de
+    // l'argent à qui n'encaisse pas est un risque gratuit.
+    const interdites = [
+      "voir_montants_livraison",
+      "gerer_livraisons",
+      "gerer_logistique",
       "gerer_documents_client",
+      "importer_recap",
+      "valider_decision",
     ] as const;
-    for (const permission of sensibles) {
-      expect(hasPermission("livreur", permission)).toBe(false);
+    for (const permission of interdites) {
+      expect(hasPermission("livreur", permission), permission).toBe(false);
     }
-    // Et il n'atteint aucune page du module.
+
+    // Il atteint les tournées, et rien d'autre du module.
+    expect(canAccessPage("livreur", "/tournees")).toBe(true);
     expect(canAccessPage("livreur", "/logistique")).toBe(false);
+    expect(canAccessPage("livreur", "/livraisons")).toBe(false);
     expect(canAccessPage("livreur", "/commandes")).toBe(false);
   });
 

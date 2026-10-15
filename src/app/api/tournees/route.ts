@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { requirePermission } from "@/lib/auth/serverGuard";
+import { requireAnyPermission } from "@/lib/auth/serverGuard";
 
 /**
  * Tournées de livraison.
@@ -31,7 +31,9 @@ const ACTIONS = [
 type Action = (typeof ACTIONS)[number];
 
 export async function GET(request: Request) {
-  const guard = await requirePermission("gerer_livraisons");
+  // L'encadrement pilote, le livreur exécute : les deux entrent, et la base
+  // décide ensuite qui voit quoi.
+  const guard = await requireAnyPermission(["gerer_livraisons", "executer_livraison"]);
   if (!guard.ok) {
     return NextResponse.json({ error: guard.error }, { status: guard.status });
   }
@@ -84,7 +86,7 @@ export async function POST(request: Request) {
   // La composition demande « gerer_logistique », l'exécution
   // « executer_livraison » : la base tranche, cette garde ne fait que barrer
   // l'entrée aux rôles qui n'ont rien à faire ici.
-  const guard = await requirePermission("gerer_livraisons");
+  const guard = await requireAnyPermission(["gerer_livraisons", "executer_livraison"]);
   if (!guard.ok) {
     return NextResponse.json({ error: guard.error }, { status: guard.status });
   }

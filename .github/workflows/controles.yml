@@ -296,6 +296,11 @@ jobs:
           set -euo pipefail
           psql -v ON_ERROR_STOP=1 -f supabase/tests/phase9_tournees.test.sql
 
+      - name: Tests des droits du livreur (phase 10)
+        run: |
+          set -euo pipefail
+          psql -v ON_ERROR_STOP=1 -f supabase/tests/phase10_droits_livreur.test.sql
+
       - name: Test de concurrence (suraffectation impossible)
         run: |
           set -euo pipefail
@@ -376,6 +381,7 @@ jobs:
              where role in ('responsable_logistique','livreur')"
           # Les retours arrière se déroulent dans l'ordre inverse des
           # migrations : la plus récente d'abord, le socle en dernier.
+          psql -v ON_ERROR_STOP=1 -q -f supabase/rollbacks/ROLLBACK_20261015002000_droits_livreur.sql
           psql -v ON_ERROR_STOP=1 -q -f supabase/rollbacks/ROLLBACK_20261015001900_tournees_livraison.sql
           psql -v ON_ERROR_STOP=1 -q -f supabase/rollbacks/ROLLBACK_20261015001800_livraison_disponibilite_creneaux.sql
           psql -v ON_ERROR_STOP=1 -q -f supabase/rollbacks/ROLLBACK_20260925001700_skara_cloisonnement_magasin.sql
@@ -409,6 +415,13 @@ jobs:
             where table_schema='public' and table_name='stores'
               and column_name='skara_invoice_prefix';
             if v <> 0 then raise exception 'Colonne de préfixe (migration 15) restante'; end if;
+            select count(*) into v from pg_proc p
+            join pg_namespace n on n.oid = p.pronamespace
+            where n.nspname='app' and p.proname='delivery_round_scope';
+            if v <> 0 then raise exception 'Fonction de portée (migration 20) restante'; end if;
+            if array_length(app.role_permissions('livreur'), 1) is not null then
+              raise exception 'Le rôle livreur garde des permissions après retour arrière';
+            end if;
             select count(*) into v from information_schema.tables
             where table_schema='public'
               and table_name in ('delivery_rounds','delivery_round_stops');

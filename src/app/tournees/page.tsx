@@ -54,6 +54,8 @@ interface Passage {
 
 interface Plan {
   id: string;
+  /** « global » pour l'encadrement, « propre » pour un livreur. */
+  scope?: "global" | "propre";
   date: string;
   label: string;
   stage: string;
@@ -179,7 +181,10 @@ export default function TourneesPage() {
 
   if (!tournees) return <LoadingState />;
 
-  const modifiable = plan && ["brouillon", "planifiee"].includes(plan.stage);
+  // Un livreur exécute, il ne compose pas : la base le refuse déjà, l'écran
+  // ne lui propose donc pas des boutons voués à l'échec.
+  const pilote = !plan || plan.scope !== "propre";
+  const modifiable = plan && pilote && ["brouillon", "planifiee"].includes(plan.stage);
   const executable = plan && ["planifiee", "en_cours"].includes(plan.stage);
 
   return (
@@ -187,8 +192,9 @@ export default function TourneesPage() {
       <div>
         <h1 className="text-xl font-bold">Tournées</h1>
         <p className="text-sm" style={{ color: "var(--muted)" }}>
-          Seuls les dossiers dont la date promise est celle de la tournée
-          peuvent y entrer. Une date promise ailleurs ne se charge pas ici.
+          {pilote
+            ? "Seuls les dossiers dont la date promise est celle de la tournée peuvent y entrer. Une date promise ailleurs ne se charge pas ici."
+            : "Vos tournées. Vous y constatez chaque passage sur place : livré, ou manqué avec son motif."}
         </p>
       </div>
 
