@@ -109,13 +109,15 @@ begin
      '95100', v.argenteuil, 'livraison_piece', 'pret_a_contacter', now(),
      'f1000000-0000-4000-f100-000000000001');
 
+  -- Alias explicite : « i » est déjà la variable de boucle de ce bloc, et
+  -- PostgreSQL refuse à juste titre de deviner lequel des deux on vise.
   insert into public.delivery_allocations (
     organization_id, logistics_line_id, delivery_job_id, quantity_allocated)
   select '00000000-0000-4000-a000-000000000001',
-         ('f2000000-0000-4000-f200-00000000000' || i)::uuid,
-         ('f3000000-0000-4000-f300-00000000000' || i)::uuid,
+         ('f2000000-0000-4000-f200-00000000000' || g.n)::uuid,
+         ('f3000000-0000-4000-f300-00000000000' || g.n)::uuid,
          1
-  from generate_series(1, 5) as i;
+  from generate_series(1, 5) as g(n);
 
   -- Créneaux retenus : lundi pour 1, 2 et 4 ; mardi pour 3 ; rien pour 5.
   insert into public.delivery_slots (
