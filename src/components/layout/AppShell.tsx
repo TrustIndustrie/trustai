@@ -23,6 +23,7 @@ import {
   Truck,
   UserCircle2,
   X,
+  CalendarClock,
 } from "lucide-react";
 import { useData } from "@/lib/store/DataProvider";
 import { useSession } from "@/lib/auth/SessionProvider";
@@ -43,6 +44,7 @@ import { LoadingState } from "@/components/ui/LoadingState";
 const navigation = [
   { href: "/dashboard", label: "Tableau de bord", icon: LayoutDashboard },
   { href: "/logistique", label: "Logistique", icon: PackageSearch },
+  { href: "/livraisons", label: "Livraisons", icon: CalendarClock },
   { href: "/commandes", label: "Commandes", icon: ClipboardList },
   { href: "/arrivages", label: "Arrivages", icon: Truck },
   { href: "/catalogue", label: "Référentiel produits", icon: BookOpen },

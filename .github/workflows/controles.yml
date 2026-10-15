@@ -194,7 +194,8 @@ jobs:
                 'match_candidates','logistics_anomalies','sync_events',
                 'sensitive_access_logs','logistics_anomaly_decisions',
                 'skara_imports','skara_invoices','skara_invoice_lines',
-                'skara_articles','skara_journal_entries','skara_import_anomalies');
+                'skara_articles','skara_journal_entries','skara_import_anomalies',
+                'delivery_slots');
             if v <> 0 then raise exception 'Droits directs restants : %', v; end if;
 
             select count(*) into v from pg_class c
@@ -206,8 +207,9 @@ jobs:
                 'match_candidates','logistics_anomalies','sync_events',
                 'sensitive_access_logs','logistics_anomaly_decisions',
                 'skara_imports','skara_invoices','skara_invoice_lines',
-                'skara_articles','skara_journal_entries','skara_import_anomalies');
-            if v <> 20 then raise exception 'RLS active sur % tables au lieu de 20', v; end if;
+                'skara_articles','skara_journal_entries','skara_import_anomalies',
+                'delivery_slots');
+            if v <> 21 then raise exception 'RLS active sur % tables au lieu de 21', v; end if;
 
             select count(*) into v from information_schema.routine_privileges
             where routine_schema='public' and grantee in ('anon','PUBLIC')
@@ -218,7 +220,10 @@ jobs:
                                    'import_skara_file','list_skara_imports',
                                    'get_skara_import','list_skara_invoices',
                                    'get_skara_invoice','get_skara_monthly_control',
-                                   'list_skara_articles_without_cost');
+                                   'list_skara_articles_without_cost',
+                                   'list_delivery_jobs','get_delivery_readiness',
+                                   'authorize_delivery_contact','propose_delivery_slots',
+                                   'confirm_delivery_slot','decline_delivery_slots');
             if v <> 0 then raise exception 'Exécution ouverte à anon/PUBLIC : %', v; end if;
 
             -- Les fonctions INTERNES (schéma app) ne sont appelables ni par
@@ -232,7 +237,7 @@ jobs:
                                    'close_sync_anomalies','line_row_hash',
                                    'skara_write_invoices','skara_write_invoice_lines',
                                    'skara_write_articles','skara_write_journal',
-                                   'allowed_store_ids');
+                                   'allowed_store_ids','delivery_readiness');
             if v <> 0 then
               raise exception 'Fonctions internes app.* encore exposées : %', v;
             end if;
@@ -275,6 +280,11 @@ jobs:
         run: |
           set -euo pipefail
           psql -v ON_ERROR_STOP=1 -f supabase/tests/phase7_skara_lecture.test.sql
+
+      - name: Tests de livraison, disponibilité et créneaux (phase 8)
+        run: |
+          set -euo pipefail
+          psql -v ON_ERROR_STOP=1 -f supabase/tests/phase8_livraison_creneaux.test.sql
 
       - name: Test de concurrence (suraffectation impossible)
         run: |
@@ -356,6 +366,7 @@ jobs:
              where role in ('responsable_logistique','livreur')"
           # Les retours arrière se déroulent dans l'ordre inverse des
           # migrations : la plus récente d'abord, le socle en dernier.
+          psql -v ON_ERROR_STOP=1 -q -f supabase/rollbacks/ROLLBACK_20261015001800_livraison_disponibilite_creneaux.sql
           psql -v ON_ERROR_STOP=1 -q -f supabase/rollbacks/ROLLBACK_20260925001700_skara_cloisonnement_magasin.sql
           psql -v ON_ERROR_STOP=1 -q -f supabase/rollbacks/ROLLBACK_20260924001600_skara_lecture.sql
           psql -v ON_ERROR_STOP=1 -q -f supabase/rollbacks/ROLLBACK_20260924001500_import_skara.sql
@@ -387,6 +398,18 @@ jobs:
             where table_schema='public' and table_name='stores'
               and column_name='skara_invoice_prefix';
             if v <> 0 then raise exception 'Colonne de préfixe (migration 15) restante'; end if;
+            select count(*) into v from information_schema.tables
+            where table_schema='public' and table_name = 'delivery_slots';
+            if v <> 0 then raise exception 'Table des créneaux (migration 18) restante'; end if;
+            select count(*) into v from information_schema.columns
+            where table_schema='public' and table_name='delivery_jobs'
+              and column_name like 'contact_authorized%';
+            if v <> 0 then raise exception 'Colonnes d''autorisation (migration 18) restantes : %', v; end if;
+            select count(*) into v from information_schema.routines
+            where routine_schema='public' and routine_name in (
+              'list_delivery_jobs','get_delivery_readiness','authorize_delivery_contact',
+              'propose_delivery_slots','confirm_delivery_slot','decline_delivery_slots');
+            if v <> 0 then raise exception 'Fonctions de créneaux restantes : %', v; end if;
             select count(*) into v from information_schema.routines
             where routine_schema='public' and routine_name in (
               'import_skara_file','list_skara_imports','get_skara_import',
