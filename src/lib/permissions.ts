@@ -45,7 +45,7 @@ export const PAGE_ACCESS: PageAccess[] = [
   { href: "/logistique/recap", permissions: ["importer_recap"] },
   { href: "/logistique/lignes", permissions: ["gerer_livraisons", "gerer_logistique"] },
   { href: "/livraisons", permissions: ["gerer_livraisons"] },
-  { href: "/tournees", permissions: ["gerer_livraisons"] },
+  { href: "/tournees", permissions: ["gerer_livraisons", "executer_livraison"] },
   { href: "/commandes", permissions: ["creer_commande", "gerer_achats", "gerer_logistique", "gerer_encaissements", "valider_decision"] },
   { href: "/catalogue", permissions: ["creer_commande", "gerer_achats", "gerer_catalogue", "gerer_referentiel_logistique"] },
   { href: "/arrivages", permissions: ["gerer_logistique", "gerer_achats"] },
@@ -96,7 +96,7 @@ export const roleDescriptions: Record<Role, string> = {
   responsable_logistique:
     "Pilote le module logistique : suivi des marchandises, dossiers de livraison, documents clients et référentiel produit.",
   livreur:
-    "Rôle du terrain. Aucun accès aux données tant que les tournées ne sont pas en place (phase 6).",
+    "Rôle du terrain. Voit ses propres tournées, avec l'adresse et le téléphone de chaque client, et constate chaque passage sur place. Ne compose aucune tournée et ne voit aucun montant à encaisser.",
   direction:
     "Lecture complète, tableaux de bord, finances et validations importantes sur tous les magasins.",
   administrateur:

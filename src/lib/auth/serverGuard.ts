@@ -51,3 +51,27 @@ export async function requirePermission(
     displayName: profile.display_name,
   };
 }
+
+/**
+ * Variante « au moins une de ces permissions ».
+ *
+ * Utile quand un même écran sert deux publics par des chemins différents :
+ * les tournées se lisent avec `gerer_livraisons` pour l'encadrement, ou avec
+ * `executer_livraison` pour le livreur, qui ne verra alors que les siennes.
+ * C'est la base qui tranche ce cloisonnement, pas cette garde : elle ne fait
+ * que barrer l'entrée aux rôles qui n'ont rien à faire là.
+ */
+export async function requireAnyPermission(
+  permissions: Permission[],
+): Promise<GuardResult> {
+  let dernier: GuardResult | null = null;
+  for (const permission of permissions) {
+    const guard = await requirePermission(permission);
+    if (guard.ok) return guard;
+    dernier = guard;
+    // Une authentification manquante ou un profil inactif ne se rattrapent
+    // pas en essayant une autre permission : on rend le refus tel quel.
+    if (guard.status !== 403) return guard;
+  }
+  return dernier ?? { ok: false, status: 403, error: "Accès refusé." };
+}

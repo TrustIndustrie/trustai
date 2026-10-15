@@ -95,3 +95,69 @@ un dossier terminé reste terminé. Ce sont des faits, pas des états techniques
 
 Il rétablit aussi `app.org_of` dans sa forme antérieure, sans les deux cas
 ajoutés par la migration 19.
+
+---
+
+# Droits du livreur (lot 2C, migration 20)
+
+Depuis la phase 1, le rôle `livreur` n'avait **aucune** permission : décision
+assumée, le socle liant son ouverture à une phase dédiée. Les tournées
+existent, le moment est venu.
+
+## Ce qu'il reçoit, et pourquoi chaque choix
+
+| Permission | Motif |
+|---|---|
+| `voir_coordonnees_client` | il ne peut pas livrer sans l'adresse et le téléphone |
+| `executer_livraison` | il constate sur place ; un résultat saisi le soir de mémoire vaut moins que rien |
+
+## Ce qu'il ne reçoit pas
+
+**`voir_montants_livraison`** — les sommes à encaisser. Par défaut il ne les
+voit pas : exposer de l'argent à qui n'encaisse pas est un risque gratuit.
+
+> Si vos livreurs encaissent au domicile, c'est une décision à prendre, et
+> elle tient en **une ligne** : ajouter `voir_montants_livraison` au rôle
+> `livreur` dans `app.role_permissions`, et la même valeur dans
+> `ROLE_PERMISSIONS` côté application. Tout le reste est déjà câblé — la
+> fonction de lecture sert le montant restant à encaisser dès que la
+> permission est là, et le journal d'accès l'enregistre.
+
+**`gerer_livraisons`** et **`gerer_logistique`** — il ne compose pas les
+tournées, il les exécute.
+
+## Le cloisonnement, qui est le cœur de cette migration
+
+Un livreur ne voit **que** les tournées dont il est le livreur. Sans cela,
+`executer_livraison` lui donnerait les coordonnées de tous les clients de
+l'entreprise et le droit de clôturer les passages de ses collègues.
+
+Plutôt que d'écrire des fonctions parallèles pour le terrain — deux
+implémentations finissent toujours par diverger — les quatre fonctions
+existantes apprennent à se restreindre :
+
+| Fonction | Avec `gerer_livraisons` | Avec `executer_livraison` seul |
+|---|---|---|
+| `list_delivery_rounds` | toutes les tournées | les siennes |
+| `get_delivery_round` | n'importe laquelle | la sienne, sinon refus |
+| `start_delivery_round` | n'importe laquelle | la sienne |
+| `record_round_stop_outcome` | n'importe quel passage | ceux de sa tournée |
+
+Le refus d'une tournée qui n'est pas la sienne porte **le même message et le
+même code** qu'une tournée d'une autre organisation : un livreur n'apprend
+rien de l'existence des tournées de ses collègues.
+
+## La traçabilité, au prix de l'optimisation
+
+`get_delivery_round` **n'est plus `stable`** : elle journalise désormais la
+consultation des coordonnées dans `sensitive_access_logs`, comme le fait déjà
+`get_delivery_job`. Une fonction `stable` ne peut rien écrire — le choix était
+entre la traçabilité et l'optimisation, et pour des adresses de clients la
+traçabilité gagne.
+
+## Le miroir à tenir
+
+`ROLE_PERMISSIONS` dans `src/lib/types.ts` doit rester le **miroir exact** de
+`app.role_permissions` en base. L'interface masque des boutons, la base refuse
+les actions : si les deux divergent, l'utilisateur voit des boutons qui
+échouent, ce qui est pire qu'un bouton absent.

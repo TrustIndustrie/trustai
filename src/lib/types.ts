@@ -826,9 +826,11 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     "gerer_referentiel_logistique",
     "valider_decision",
   ],
-  // Phase 1 : AUCUNE permission (décision E18). Les droits du livreur seront
-  // ouverts en phase 6, avec la relation livreur ↔ passage et ses tests RLS.
-  livreur: [],
+  // Migration 20 : le terrain s'ouvre. Strictement le nécessaire pour livrer
+  // et constater. Les montants à encaisser restent dehors tant que personne
+  // ne décide le contraire ; cette liste doit rester le MIROIR EXACT de
+  // app.role_permissions côté base.
+  livreur: ["voir_coordonnees_client", "executer_livraison"],
   direction: [
     "creer_commande",
     "encaisser_reglement",
