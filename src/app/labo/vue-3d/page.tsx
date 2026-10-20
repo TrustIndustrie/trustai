@@ -222,6 +222,25 @@ export default function LaboVue3dPage() {
             )}
           </div>
 
+          {/* Base lue, mais vide. À DIRE : un plateau vide sans explication
+              se lit comme une panne, alors que c'est une information — la
+              table `logistics_lines` ne contient rien pour cette
+              organisation. */}
+          {source === "reelle" && sceneReelle?.converties === 0 && (
+            <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-8">
+              <div className="max-w-md rounded-lg border border-white/15 bg-slate-900/90 px-5 py-4 text-center backdrop-blur-md">
+                <p className="text-sm font-medium text-slate-200">
+                  Aucune donnée logistique
+                </p>
+                <p className="mt-1.5 text-[12px] leading-relaxed text-slate-400">
+                  La lecture a abouti, mais elle ne renvoie aucune ligne : la
+                  table <code>logistics_lines</code> est vide pour votre
+                  organisation. Ce n&apos;est pas une panne du prototype.
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* État de la lecture réelle : chargement, refus, erreur. */}
           {source === "reelle" && chargementReel.phase !== "pret" && (
             <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-8">
