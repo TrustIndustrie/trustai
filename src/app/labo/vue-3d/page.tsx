@@ -13,14 +13,19 @@ import {
   provoquerTransfert,
   reinitialiser,
 } from "@/lib/labo3d/donnees-fictives";
+import { useDonneesReelles, PLAFOND } from "@/components/labo3d/useDonneesReelles";
 import { COULEURS_ETAPE, COULEUR_ANOMALIE, LIBELLES_ETAPE } from "@/lib/labo3d/etapes";
 import type { CodeDepot, EtatScene, Selection } from "@/lib/labo3d/types";
 
 /**
  * LABORATOIRE 3D — écran d'expérimentation.
  *
- * ⚠ PROTOTYPE. Cet écran n'appelle ni Supabase ni aucun service : toutes les
- * données sont fictives et produites en mémoire. Rien n'est écrit nulle part.
+ * ⚠ PROTOTYPE. Deux sources, et DEUX SEULEMENT :
+ *   - « Fictif » : tout est produit en mémoire, aucune connexion.
+ *   - « Réel (lecture seule) » : une seule fonction serveur est appelée,
+ *     `list_logistics_lines`, qui est déclarée `stable` — elle ne peut rien
+ *     écrire. Aucune autre : ni validation, ni décision, ni envoi, ni
+ *     écriture dans le Google Sheet. La simulation est éteinte dans ce mode.
  *
  * La scène est chargée par `next/dynamic` avec le rendu serveur désactivé :
  * three.js ne touche donc ni le bundle serveur, ni le JavaScript des autres
@@ -50,7 +55,9 @@ const LEGENDE: (keyof typeof LIBELLES_ETAPE)[] = [
 ];
 
 export default function LaboVue3dPage() {
-  const [etat, setEtat] = useState<EtatScene>(() => creerEtatInitial());
+  const [source, setSource] = useState<"fictive" | "reelle">("fictive");
+  const [etatFictif, setEtatFictif] = useState<EtatScene>(() => creerEtatInitial());
+  const { etat: chargementReel, recharger } = useDonneesReelles(source === "reelle");
   const [selection, setSelection] = useState<Selection>(null);
   const [survol, setSurvol] = useState<string | null>(null);
   const [ouverts, setOuverts] = useState<Record<CodeDepot, boolean>>({
@@ -61,13 +68,32 @@ export default function LaboVue3dPage() {
   const [vitesse, setVitesse] = useState(1);
   const controles = useRef<ControlesType>(null);
 
+  const sceneReelle = chargementReel.phase === "pret" ? chargementReel.scene : null;
+
+  // La scène affichée. En mode réel tant que la lecture n'a pas abouti, on
+  // montre un plateau VIDE plutôt que les caisses fictives : voir des données
+  // inventées sous l'étiquette « réel » serait le pire défaut possible.
+  const etat: EtatScene =
+    source === "reelle"
+      ? (sceneReelle?.etat ?? { ...etatFictif, caisses: [], vehicules: [], anomalies: [], journal: [] })
+      : etatFictif;
+
   // Lecture automatique : un jour simulé toutes les 1,6 s à vitesse 1.
+  // Jamais en données réelles : il n'y a pas de jour à faire avancer.
   useEffect(() => {
-    if (!lecture) return;
+    if (!lecture || source === "reelle") return;
     const periode = Math.max(250, 1600 / vitesse);
-    const minuteur = setInterval(() => setEtat((e) => avancerJour(e)), periode);
+    const minuteur = setInterval(() => setEtatFictif((e) => avancerJour(e)), periode);
     return () => clearInterval(minuteur);
-  }, [lecture, vitesse]);
+  }, [lecture, vitesse, source]);
+
+  // Changer de source remet la sélection à plat : un identifiant fictif ne
+  // désigne rien dans les vraies lignes, et inversement.
+  useEffect(() => {
+    setSelection(null);
+    setSurvol(null);
+    setLecture(false);
+  }, [source]);
 
   const basculerToit = useCallback((code: CodeDepot) => {
     setOuverts((o) => ({ ...o, [code]: !o[code] }));
@@ -82,7 +108,7 @@ export default function LaboVue3dPage() {
   }, []);
 
   const toutReinitialiser = useCallback(() => {
-    setEtat(reinitialiser());
+    setEtatFictif(reinitialiser());
     setSelection(null);
     setSurvol(null);
     setOuverts({ argenteuil: false, aubagne: false });
@@ -94,14 +120,41 @@ export default function LaboVue3dPage() {
     <div className="fixed inset-0 z-40 flex flex-col bg-slate-900">
       {/* Bandeau d'avertissement : on ne doit jamais confondre ce prototype
           avec l'application réelle. */}
-      <div className="flex items-center justify-between gap-3 border-b border-amber-400/30 bg-amber-400/10 px-4 py-1.5">
-        <p className="text-[12px] font-medium text-amber-200">
-          Laboratoire expérimental — données entièrement fictives. Aucune
-          connexion à Supabase, aucune écriture, aucun lien avec la production.
+      <div
+        className={`flex items-center justify-between gap-3 border-b px-4 py-1.5 ${
+          source === "reelle"
+            ? "border-sky-400/30 bg-sky-400/10"
+            : "border-amber-400/30 bg-amber-400/10"
+        }`}
+      >
+        <p
+          className={`text-[12px] font-medium ${
+            source === "reelle" ? "text-sky-200" : "text-amber-200"
+          }`}
+        >
+          {source === "reelle" ? (
+            <>
+              Laboratoire expérimental — <strong>vraies lignes logistiques, en
+              lecture seule</strong>. Une seule fonction serveur est appelée
+              (<code>list_logistics_lines</code>) : aucune écriture, aucune
+              décision, aucun envoi, rien dans le Google Sheet. La simulation
+              est désactivée.
+            </>
+          ) : (
+            <>
+              Laboratoire expérimental — données entièrement fictives. Aucune
+              connexion à Supabase, aucune écriture, aucun lien avec la
+              production.
+            </>
+          )}
         </p>
         <a
           href="/dashboard"
-          className="whitespace-nowrap rounded border border-amber-400/40 px-2 py-0.5 text-[11px] text-amber-100 hover:bg-amber-400/15"
+          className={`whitespace-nowrap rounded border px-2 py-0.5 text-[11px] ${
+            source === "reelle"
+              ? "border-sky-400/40 text-sky-100 hover:bg-sky-400/15"
+              : "border-amber-400/40 text-amber-100 hover:bg-amber-400/15"
+          }`}
         >
           Quitter le laboratoire
         </a>
@@ -156,7 +209,50 @@ export default function LaboVue3dPage() {
               Chariots, ouvriers et arbres sont décoratifs : ils ne portent
               aucune donnée.
             </p>
+
+            {/* Ce que la base ne dit PAS. À dire à l'écran, pas à maquiller. */}
+            {source === "reelle" && sceneReelle && (
+              <p className="mt-2 max-w-[190px] border-t border-white/10 pt-2 text-[11px] leading-snug text-sky-300/80">
+                {sceneReelle.converties} ligne(s) sur {sceneReelle.total}
+                {sceneReelle.total > PLAFOND ? ` (plafond ${PLAFOND})` : ""}.
+                Le « % occupé » repose sur une capacité estimée, et la position
+                des camions sur la route est indicative : la base ne porte ni
+                l&apos;une ni l&apos;autre.
+              </p>
+            )}
           </div>
+
+          {/* État de la lecture réelle : chargement, refus, erreur. */}
+          {source === "reelle" && chargementReel.phase !== "pret" && (
+            <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-8">
+              <div className="pointer-events-auto max-w-md rounded-lg border border-white/15 bg-slate-900/90 px-5 py-4 text-center backdrop-blur-md">
+                {chargementReel.phase === "chargement" && (
+                  <p className="text-sm text-slate-300">
+                    Lecture des lignes logistiques…
+                  </p>
+                )}
+                {(chargementReel.phase === "refus" ||
+                  chargementReel.phase === "erreur") && (
+                  <>
+                    <p className="text-sm font-medium text-amber-200">
+                      {chargementReel.phase === "refus"
+                        ? "Lecture impossible"
+                        : "La lecture a échoué"}
+                    </p>
+                    <p className="mt-1.5 text-[12px] leading-relaxed text-slate-400">
+                      {chargementReel.message}
+                    </p>
+                    <button
+                      onClick={() => setSource("fictive")}
+                      className="mt-3 rounded border border-white/20 px-2.5 py-1 text-[12px] text-slate-200 hover:bg-white/10"
+                    >
+                      Revenir aux données fictives
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Aide à la navigation. */}
           <div className="pointer-events-none absolute bottom-4 left-4 rounded-lg border border-white/10 bg-slate-900/75 px-3 py-2 text-[11px] leading-relaxed text-slate-400 backdrop-blur-md">
@@ -165,23 +261,32 @@ export default function LaboVue3dPage() {
           </div>
         </div>
 
-        <Panneau etat={etat} selection={selection} onFermer={() => setSelection(null)} />
+        <Panneau
+          etat={etat}
+          selection={selection}
+          source={source}
+          onFermer={() => setSelection(null)}
+        />
       </div>
 
       <Simulateur
+        source={source}
+        onSource={setSource}
+        chargement={chargementReel.phase === "chargement"}
         jour={etat.jour}
         lecture={lecture}
         vitesse={vitesse}
         ouverts={ouverts}
-        onJourSuivant={() => setEtat((e) => avancerJour(e))}
+        onJourSuivant={() => setEtatFictif((e) => avancerJour(e))}
         onLecture={() => setLecture((l) => !l)}
         onVitesse={setVitesse}
-        onTransfert={() => setEtat((e) => provoquerTransfert(e))}
-        onAnomalie={() => setEtat((e) => declencherAnomalie(e))}
-        onLivrer={() => setEtat((e) => livrerTournee(e))}
+        onTransfert={() => setEtatFictif((e) => provoquerTransfert(e))}
+        onAnomalie={() => setEtatFictif((e) => declencherAnomalie(e))}
+        onLivrer={() => setEtatFictif((e) => livrerTournee(e))}
         onReinitialiser={toutReinitialiser}
         onBasculerToit={basculerToit}
         onVueGenerale={vueGenerale}
+        onRecharger={() => void recharger()}
       />
     </div>
   );

@@ -151,7 +151,11 @@ export function placeDansZone(
   const rangees = Math.max(2, Math.floor(r.profondeur / pas));
   const parNiveau = colonnes * rangees;
 
-  const niveau = Math.floor(rang / parNiveau);
+  // Plafond d'empilement : la pile ne doit JAMAIS traverser le toit. Avec
+  // les 200 caisses fictives la question ne se posait pas ; avec de vraies
+  // lignes, une zone chargée crevait le bâtiment par le haut.
+  const niveauMax = Math.max(0, Math.floor((p.hauteur - 1.6) / 0.95));
+  const niveau = Math.min(niveauMax, Math.floor(rang / parNiveau));
   const reste = rang % parNiveau;
   const colonne = reste % colonnes;
   const rangee = Math.floor(reste / colonnes);

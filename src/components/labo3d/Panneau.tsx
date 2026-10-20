@@ -32,7 +32,9 @@ export function Panneau({
   etat,
   selection,
   onFermer,
+  source,
 }: {
+  source: "fictive" | "reelle";
   etat: EtatScene;
   selection: Selection;
   onFermer: () => void;
@@ -47,9 +49,18 @@ export function Panneau({
       <div className="flex items-start justify-between gap-2">
         <div>
           <p className="text-[15px] font-semibold text-white">Supervision</p>
-          <p className="text-[11px] text-amber-300/90">
-            Jour simulé {etat.jour} · données fictives
-          </p>
+          {/* Le sous-titre doit dire la vérité sur la source : afficher
+              « données fictives » devant de vraies lignes serait pire que de
+              ne rien afficher. */}
+          {source === "reelle" ? (
+            <p className="text-[11px] text-sky-300/90">
+              Lignes logistiques réelles · lecture seule
+            </p>
+          ) : (
+            <p className="text-[11px] text-amber-300/90">
+              Jour simulé {etat.jour} · données fictives
+            </p>
+          )}
         </div>
         {selection && (
           <button
