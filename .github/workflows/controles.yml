@@ -228,7 +228,8 @@ jobs:
                                    'remove_round_stop','reorder_round_stops',
                                    'plan_delivery_round','start_delivery_round',
                                    'record_round_stop_outcome','list_delivery_rounds',
-                                   'get_delivery_round','list_round_candidates');
+                                   'get_delivery_round','list_round_candidates',
+                                   'create_delivery_job');
             if v <> 0 then raise exception 'Exécution ouverte à anon/PUBLIC : %', v; end if;
 
             -- Les fonctions INTERNES (schéma app) ne sont appelables ni par
@@ -242,7 +243,8 @@ jobs:
                                    'close_sync_anomalies','line_row_hash',
                                    'skara_write_invoices','skara_write_invoice_lines',
                                    'skara_write_articles','skara_write_journal',
-                                   'allowed_store_ids','delivery_readiness');
+                                   'allowed_store_ids','delivery_readiness',
+                                   'next_delivery_job_reference');
             if v <> 0 then
               raise exception 'Fonctions internes app.* encore exposées : %', v;
             end if;
@@ -300,6 +302,11 @@ jobs:
         run: |
           set -euo pipefail
           psql -v ON_ERROR_STOP=1 -f supabase/tests/phase10_droits_livreur.test.sql
+
+      - name: Tests de création d'un dossier de livraison (phase 11)
+        run: |
+          set -euo pipefail
+          psql -v ON_ERROR_STOP=1 -f supabase/tests/phase11_creation_dossier.test.sql
 
       - name: Test de concurrence (suraffectation impossible)
         run: |

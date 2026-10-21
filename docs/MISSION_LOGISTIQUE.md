@@ -95,6 +95,51 @@ code mort tant que l'entrée de la chaîne n'existe pas.
 
 ---
 
+## 4 bis. La porte posée le 21 octobre 2026 (migration 21)
+
+`public.create_delivery_job(jsonb)` crée enfin un dossier de livraison. C'est
+l'entrée de chaîne qui manquait : avant elle, `insert into
+public.delivery_jobs` n'existait que dans les jeux d'essai, et trois lots de
+travail étaient suspendus à une porte jamais posée.
+
+**Ce qu'elle fait :** un dossier pour un client, avec affectation éventuelle
+de lignes logistiques, et la disponibilité calculée en retour.
+
+**Ce qu'elle ne fait pas, délibérément :**
+
+- elle ne se déclenche jamais toute seule — aucun déclencheur automatique,
+  aucune règle « toute ligne disponible devient un dossier ». La règle métier
+  dépend des huit questions ci-dessous ;
+- elle ne contacte personne, ne propose aucune date ;
+- elle n'écrit ni dans le Google Sheet ni dans Skara ;
+- elle ne choisit pas l'étape de départ : un dossier naît toujours
+  `a_rapprocher`.
+
+**Trois décisions de conception :**
+
+1. **Le client est photographié**, pas seulement référencé : le dossier porte
+   `customer_id` *et* une copie du nom, du téléphone et de l'adresse. Une
+   fiche corrigée six mois plus tard ne doit pas réécrire l'adresse à
+   laquelle on a réellement livré.
+2. **La référence Skara sert de clé d'idempotence** : un double clic lève une
+   erreur qui nomme le dossier existant, au lieu de livrer deux fois.
+3. **L'affectation réutilise `allocate_to_delivery_job`**, qui verrouille déjà
+   la ligne et interdit la suraffectation.
+
+Référence lisible `LIV-AAAAMM-NNNN`, numérotée par organisation et par mois,
+sérialisée par verrou consultatif.
+
+Vérifié sur un PostgreSQL 16 réel, schéma complet et verrouillage en place :
+`supabase/tests/phase11_creation_dossier.test.sql`, dix contrôles. Retour
+arrière : `supabase/rollbacks/ROLLBACK_20261021002100_…`, sans perte de
+données.
+
+**Ce qui reste à décider, et qui viendra des réponses :** qui crée un dossier,
+sur quel signal, et à partir de quoi (une ligne `disponible` ? une commande
+Skara ? un message du magasin ?).
+
+---
+
 ## 5. Les huit questions à rapporter
 
 La réponse « par mail » ou « par Skara » ne suffira pas : chaque point
