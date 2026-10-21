@@ -5,7 +5,14 @@ import { useFrame } from "@react-three/fiber";
 import { RoundedBox, Html } from "@react-three/drei";
 import { Color, Object3D } from "three";
 import type { Group, InstancedMesh } from "three";
-import { PLAN, PLAN_MAGASINS, ROUTE, positionSurRoute } from "./geometrie";
+import {
+  DISTANCE_REELLE_KM,
+  DUREE_REELLE_HEURES,
+  PLAN,
+  PLAN_MAGASINS,
+  ROUTE,
+  positionSurRoute,
+} from "./geometrie";
 import type { CodeDepot } from "@/lib/labo3d/types";
 
 /**
@@ -37,7 +44,10 @@ export function Sol() {
   return (
     <group>
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} receiveShadow>
-        <planeGeometry args={[320, 320]} />
+        {/* 600 et non 320 : au dézoom maximal, le bord du terrain apparaissait
+            en diagonale dans les coins. Un plan n'est qu'un quadrilatère, il
+            ne coûte rien de le faire large. */}
+        <planeGeometry args={[600, 600]} />
         <meshStandardMaterial color="#a9b49c" roughness={1} />
       </mesh>
 
@@ -528,11 +538,21 @@ export function Eclairage() {
   );
 }
 
-/** Un repère visible du flux : des jalons le long de la route. DÉCORATIF. */
+/**
+ * Le balisage de la route, et surtout LE PANNEAU DE DISTANCE. DÉCORATIF.
+ *
+ * L'échelle de la scène est rompue : les deux dépôts sont écartés pour rester
+ * lisibles, pas pour respecter les 770 km réels. Le panneau dit la vraie
+ * valeur, posé au milieu de la route — sans lui, un spectateur croirait que
+ * les deux sites sont voisins, ce qui est précisément le malentendu qu'on
+ * cherche à éviter.
+ */
 export function Balisage() {
+  const milieu = positionSurRoute(0.5);
+
   return (
     <group>
-      {[0.12, 0.38, 0.62, 0.88].map((t) => {
+      {[0.1, 0.3, 0.7, 0.9].map((t) => {
         const [x, , z] = positionSurRoute(t);
         return (
           <group key={t}>
@@ -545,6 +565,39 @@ export function Balisage() {
           </group>
         );
       })}
+
+      {/* Le panneau : deux mâts, un caisson, et l'inscription en HTML pour
+          rester nette à tout niveau de zoom. */}
+      <group position={[milieu[0] + ROUTE.largeur / 2 + 3.4, 0, milieu[2]]}>
+        {[-0.9, 0.9].map((x) => (
+          <mesh key={x} position={[x, 1.6, 0]} castShadow>
+            <cylinderGeometry args={[0.09, 0.09, 3.2, 6]} />
+            <meshStandardMaterial color="#8a9099" roughness={0.6} metalness={0.3} />
+          </mesh>
+        ))}
+        {/* Le caisson reste discret : l'inscription est en HTML, qui garde
+            une taille fixe à l'écran alors que la géométrie, elle, rétrécit au
+            dézoom. Les faire coïncider à tous les niveaux de zoom est
+            impossible — autant assumer une étiquette lisible posée sur un
+            support sobre. */}
+        <mesh position={[0, 3.5, 0]} castShadow>
+          <boxGeometry args={[4.6, 1.7, 0.16]} />
+          <meshStandardMaterial color="#24405c" roughness={0.6} />
+        </mesh>
+        <Html position={[0, 3.5, 0.2]} center zIndexRange={[14, 0]}>
+          <div className="pointer-events-none select-none whitespace-nowrap rounded-md border border-sky-300/30 bg-[#24405c]/95 px-2.5 py-1 text-center leading-tight shadow-lg">
+            <div className="text-[9px] font-semibold tracking-[0.18em] text-sky-200/80">
+              AFFRÈTEMENT
+            </div>
+            <div className="text-[13px] font-semibold text-white">
+              {DISTANCE_REELLE_KM} km · ~{DUREE_REELLE_HEURES} h
+            </div>
+            <div className="text-[9px] text-sky-200/70">
+              échelle de la scène rompue
+            </div>
+          </div>
+        </Html>
+      </group>
     </group>
   );
 }

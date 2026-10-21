@@ -1,6 +1,8 @@
 import type { LogisticsLineRow } from "@/lib/types";
 import { reattribuerRangs } from "./rangs";
+import { estModeLogistique } from "./fournisseurs";
 import type {
+  Fournisseur,
   Anomalie,
   Caisse,
   CodeDepot,
@@ -83,11 +85,54 @@ export function joursDepuis(iso: string | null | undefined, maintenant: number):
   return Math.max(0, Math.floor((maintenant - t) / 86_400_000));
 }
 
+/** Une ligne de `public.suppliers`, telle que la base la rend. */
+export interface LigneFournisseur {
+  id: string;
+  name: string;
+  country?: string | null;
+  logistics?: string | null;
+  lead_time_days?: number | null;
+  active?: boolean | null;
+}
+
+/**
+ * Convertit les fournisseurs réels. Rien n'est inventé : ce que la base ne
+ * renseigne pas devient « Pays non renseigné » ou un délai nul, et l'écran le
+ * montre tel quel.
+ */
+export function fournisseursDepuisLignes(lignes: LigneFournisseur[]): Fournisseur[] {
+  return lignes
+    .filter((f) => f.active !== false)
+    .map((f) => {
+      const mode = String(f.logistics ?? "");
+      return {
+        id: String(f.id),
+        nom: String(f.name ?? "Fournisseur sans nom"),
+        pays:
+          f.country && String(f.country).trim() !== ""
+            ? String(f.country).trim()
+            : "Pays non renseigné",
+        // Une valeur inconnue n'est pas rangée au hasard : `les_deux` est la
+        // valeur par défaut de la colonne, c'est donc la lecture la moins
+        // fausse.
+        mode: estModeLogistique(mode) ? mode : "les_deux",
+        delaiJours:
+          typeof f.lead_time_days === "number" && f.lead_time_days > 0
+            ? f.lead_time_days
+            : null,
+        depot: "argenteuil" as const,
+      };
+    })
+    .sort((a, b) => a.nom.localeCompare(b.nom, "fr"));
+}
+
 export interface OptionsConversion {
   /** Horodatage de référence, injectable pour que les tests soient stables. */
   maintenant?: number;
   /** Nombre total de lignes côté serveur, quand la page est tronquée. */
   total?: number;
+  /** Fournisseurs réels, déjà convertis. */
+  fournisseurs?: Fournisseur[];
 }
 
 export interface SceneReelle {
@@ -229,6 +274,7 @@ export function etatDepuisLignes(
     etat: {
       jour: 0,
       depots: DEPOTS_REELS,
+      fournisseurs: options.fournisseurs ?? [],
       caisses: reattribuerRangs(caisses),
       vehicules,
       anomalies,

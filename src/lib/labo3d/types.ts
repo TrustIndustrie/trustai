@@ -64,6 +64,24 @@ export interface Vehicule {
   enRoute: boolean;
 }
 
+/** Les trois valeurs réelles de `suppliers.logistics`. */
+export type ModeLogistique = "retrait_trust" | "livraison_fournisseur" | "les_deux";
+
+/**
+ * Un site fournisseur. La table `suppliers` n'a NI ADRESSE NI VILLE : seul le
+ * pays est connu, et le placement dans la scène est donc explicitement
+ * schématique. Ce qui est réel et utile, c'est le mode logistique et le délai.
+ */
+export interface Fournisseur {
+  id: string;
+  nom: string;
+  pays: string;
+  mode: ModeLogistique;
+  /** Délai annoncé en jours, nul si le fournisseur ne l'a jamais donné. */
+  delaiJours: number | null;
+  depot: CodeDepot;
+}
+
 export interface Depot {
   code: CodeDepot;
   nom: string;
@@ -84,6 +102,8 @@ export interface EtatScene {
   /** Jour simulé, pour que l'écran affiche une horloge fictive. */
   jour: number;
   depots: Depot[];
+  /** Sites fournisseurs, vides tant qu'aucun n'est connu. */
+  fournisseurs: Fournisseur[];
   caisses: Caisse[];
   vehicules: Vehicule[];
   anomalies: Anomalie[];
@@ -97,4 +117,5 @@ export type Selection =
   | { genre: "caisse"; id: string }
   | { genre: "vehicule"; id: string }
   | { genre: "magasin"; nom: string }
+  | { genre: "fournisseur"; id: string }
   | null;

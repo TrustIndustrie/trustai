@@ -5,7 +5,12 @@ import { useData } from "@/lib/store/DataProvider";
 import { useSession } from "@/lib/auth/SessionProvider";
 import { hasPermission } from "@/lib/permissions";
 import type { LogisticsLineRow } from "@/lib/types";
-import { etatDepuisLignes, type SceneReelle } from "@/lib/labo3d/donnees-reelles";
+import {
+  etatDepuisLignes,
+  fournisseursDepuisLignes,
+  type LigneFournisseur,
+  type SceneReelle,
+} from "@/lib/labo3d/donnees-reelles";
 
 /**
  * LABORATOIRE 3D — la lecture des vraies lignes.
@@ -19,6 +24,11 @@ import { etatDepuisLignes, type SceneReelle } from "@/lib/labo3d/donnees-reelles
  * jusqu'à un PLAFOND volontaire : au-delà, la scène deviendrait illisible
  * avant de devenir lente, et l'écran annonce « N affichées sur M » plutôt que
  * de laisser croire qu'on voit tout.
+ *
+ * Les FOURNISSEURS se lisent différemment : `public.suppliers` n'est pas dans
+ * les treize tables verrouillées du socle, et l'application la lit déjà par
+ * `select` direct, cloisonné par organisation via la RLS. Aucune fonction
+ * serveur n'était donc nécessaire — et la lecture reste une lecture.
  */
 
 const PAR_APPEL = 200;
@@ -33,7 +43,7 @@ export type EtatChargement =
 
 export function useDonneesReelles(actif: boolean) {
   const { mode, listLogisticsLines } = useData();
-  const { profile, loading } = useSession();
+  const { profile, loading, supabase } = useSession();
   const [etat, setEtat] = useState<EtatChargement>({ phase: "inactif" });
   const jeton = useRef(0);
 
@@ -75,14 +85,29 @@ export function useDonneesReelles(actif: boolean) {
         lignes.push(...page.rows);
         if (page.rows.length < PAR_APPEL || lignes.length >= total) break;
       }
-      setEtat({ phase: "pret", scene: etatDepuisLignes(lignes, { total }) });
+      // Les fournisseurs, en lecture seule et sans faire échouer la scène :
+      // une table inaccessible ne doit pas priver l'utilisateur de la
+      // marchandise, qui est l'essentiel.
+      let fournisseurs: ReturnType<typeof fournisseursDepuisLignes> = [];
+      if (supabase) {
+        const { data } = await supabase
+          .from("suppliers")
+          .select("id, name, country, logistics, lead_time_days, active");
+        if (jeton.current !== monJeton) return;
+        if (data) fournisseurs = fournisseursDepuisLignes(data as LigneFournisseur[]);
+      }
+
+      setEtat({
+        phase: "pret",
+        scene: etatDepuisLignes(lignes, { total, fournisseurs }),
+      });
     } catch (err: unknown) {
       setEtat({
         phase: "erreur",
         message: err instanceof Error ? err.message : "Lecture impossible.",
       });
     }
-  }, [mode, profile, listLogisticsLines]);
+  }, [mode, profile, listLogisticsLines, supabase]);
 
   useEffect(() => {
     if (!actif) {

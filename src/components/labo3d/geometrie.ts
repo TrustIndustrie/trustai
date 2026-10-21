@@ -21,16 +21,32 @@ export interface PlanDepot {
   orientationQuais: 1 | -1;
 }
 
+/**
+ * L'ÉCARTEMENT DES DÉPÔTS — une échelle volontairement rompue.
+ *
+ * Argenteuil et La Penne-sur-Huveaune sont distants de ~770 km par la route,
+ * soit environ huit heures de conduite. À l'échelle, les deux sites seraient
+ * deux points invisibles séparés d'un désert, et la scène perdrait tout ce
+ * qui en fait l'intérêt. On les écarte donc assez pour qu'on SENTE la
+ * distance, et un panneau sur la route en donne la valeur réelle : le
+ * spectateur ne peut pas se tromper sur ce qu'il regarde.
+ */
+export const DISTANCE_REELLE_KM = 770;
+export const DUREE_REELLE_HEURES = 8;
+
+/** Demi-écartement sur l'axe nord-sud. */
+const ECART = 54;
+
 export const PLAN: Record<CodeDepot, PlanDepot> = {
   argenteuil: {
-    centre: [0, 0, -30],
+    centre: [0, 0, -ECART],
     largeur: 30,
     profondeur: 18,
     hauteur: 7.5,
     orientationQuais: 1,
   },
   aubagne: {
-    centre: [0, 0, 30],
+    centre: [0, 0, ECART],
     largeur: 22,
     profondeur: 14,
     hauteur: 6.5,
@@ -73,15 +89,26 @@ export const PALETTES: Record<CodeDepot, Palette> = {
 
 /** Les trois magasins, posés en bordure de plateau. */
 export const PLAN_MAGASINS: { nom: string; position: [number, number, number] }[] = [
-  { nom: "Trust Lisses", position: [-30, 0, -38] },
-  { nom: "Trust Herblay", position: [30, 0, -38] },
-  { nom: "Trust Aubagne", position: [30, 0, 38] },
+  // Les magasins suivent leur dépôt : les déplacer séparément les aurait
+  // laissés orphelins au milieu du plateau au premier changement d'écartement.
+  { nom: "Trust Lisses", position: [-30, 0, -ECART - 8] },
+  { nom: "Trust Herblay", position: [30, 0, -ECART - 8] },
+  { nom: "Trust Aubagne", position: [30, 0, ECART + 8] },
 ];
 
 /** La route d'affrètement : d'un quai à l'autre, en ligne droite. */
 export const ROUTE = {
-  depart: [0, 0, -30 + 9 + 3] as [number, number, number],
-  arrivee: [0, 0, 30 - 7 - 3] as [number, number, number],
+  // Dérivés du plan, et non réécrits à la main : au premier changement
+  // d'écartement, une constante oubliée aurait planté la route au milieu d'un
+  // bâtiment.
+  depart: [
+    0, 0,
+    PLAN.argenteuil.centre[2] + PLAN.argenteuil.profondeur / 2 + 3,
+  ] as [number, number, number],
+  arrivee: [
+    0, 0,
+    PLAN.aubagne.centre[2] - PLAN.aubagne.profondeur / 2 - 3,
+  ] as [number, number, number],
   largeur: 6,
 };
 
@@ -203,10 +230,13 @@ export function placeDansZone(
 /** Position d'attente hors site, pour ce qui n'est pas encore arrivé. */
 export function placeHorsSite(rang: number): [number, number, number] {
   const colonnes = 6;
+  // L'aire d'attente est accrochée à Argenteuil, pas à une coordonnée écrite
+  // en dur : le dépôt d'entrée peut bouger sans l'abandonner derrière lui.
   return [
-    -34 + (rang % colonnes) * 1.5,
+    PLAN.argenteuil.centre[0] - PLAN.argenteuil.largeur / 2 - 19
+      + (rang % colonnes) * 1.5,
     0.45,
-    -30 + Math.floor(rang / colonnes) * 1.5,
+    PLAN.argenteuil.centre[2] + Math.floor(rang / colonnes) * 1.5,
   ];
 }
 

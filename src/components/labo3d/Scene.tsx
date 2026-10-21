@@ -10,6 +10,8 @@ import { Vehicule } from "./Vehicule";
 import {
   Balisage, Chariot, Eclairage, Magasin, Ouvrier, Sol, Vegetation,
 } from "./Decor";
+import { SiteFournisseur } from "./SiteFournisseur";
+import { placerFournisseurs } from "@/lib/labo3d/fournisseurs";
 import { PLAN, PLAN_MAGASINS, PALETTES } from "./geometrie";
 import type { CodeDepot, EtatScene, Selection } from "@/lib/labo3d/types";
 
@@ -63,7 +65,7 @@ export function Scene({
       shadows
       dpr={[1, 1.75]}
       orthographic
-      camera={{ position: [60, 52, 60], zoom: 9, near: -200, far: 400 }}
+      camera={{ position: [86, 72, 86], zoom: 5.4, near: -300, far: 700 }}
       onPointerMissed={() => onSelection(null)}
     >
       {/* Trois lumières, et chacune a un rôle : le ciel et le sol donnent
@@ -78,12 +80,12 @@ export function Scene({
         intensity={1.9}
         castShadow
         shadow-mapSize={[2048, 2048]}
-        shadow-camera-left={-70}
-        shadow-camera-right={70}
-        shadow-camera-top={70}
-        shadow-camera-bottom={-70}
+        shadow-camera-left={-105}
+        shadow-camera-right={105}
+        shadow-camera-top={105}
+        shadow-camera-bottom={-105}
         shadow-camera-near={1}
-        shadow-camera-far={180}
+        shadow-camera-far={260}
         shadow-bias={-0.0008}
       />
       <directionalLight position={[-30, 24, -34]} intensity={0.34} color="#cfdcee" />
@@ -114,6 +116,22 @@ export function Scene({
           />
         );
       })}
+
+      {/* Les sites fournisseurs, au nord du dépôt d'entrée. Leur position ne
+          dit que le pays — la base n'a pas d'adresse — mais leur couleur dit
+          un fait réel : qui transporte la marchandise. */}
+      {placerFournisseurs(etat.fournisseurs, PLAN.argenteuil.centre).map(
+        ({ fournisseur, position }) => (
+          <SiteFournisseur
+            key={fournisseur.id}
+            fournisseur={fournisseur}
+            position={position}
+            survole={survol === fournisseur.id}
+            onSurvol={onSurvol}
+            onClick={(id) => onSelection({ genre: "fournisseur", id })}
+          />
+        ),
+      )}
 
       {/* Les magasins du Nord portent le bleu d'Argenteuil, celui du Sud
           l'ocre de La Penne : on lit le rattachement sans rien cliquer. */}
@@ -167,8 +185,8 @@ export function Scene({
           supplémentaire, et c'est ce qui « pose » les objets au sol. */}
       <ContactShadows
         position={[0, 0.04, 0]}
-        scale={120}
-        resolution={1024}
+        scale={190}
+        resolution={1536}
         blur={2.4}
         opacity={0.42}
         far={14}
@@ -188,9 +206,9 @@ export function Scene({
         // la vue reste toujours lisible.
         minPolarAngle={Math.PI / 7}
         maxPolarAngle={Math.PI / 2.45}
-        minZoom={6}
+        minZoom={4}
         maxZoom={48}
-        target={[0, 0, 0]}
+        target={[0, 0, -12]}
       />
     </Canvas>
   );

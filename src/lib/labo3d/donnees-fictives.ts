@@ -1,5 +1,6 @@
 import { etapeSuivante } from "./etapes";
 import { reattribuerRangs } from "./rangs";
+import type { Fournisseur, ModeLogistique } from "./types";
 import type {
   Anomalie,
   Caisse,
@@ -96,6 +97,24 @@ const CLIENTS = [
 ];
 
 /** Répartition des 200 caisses, pensée pour une scène vivante et lisible. */
+/**
+ * Les sites fournisseurs fictifs. Modes et délais tirés de façon
+ * DÉTERMINISTE depuis le rang : la démonstration doit être reproductible, et
+ * un fournisseur qui change de mode à chaque ouverture ne prouverait rien.
+ */
+const MODES_FICTIFS: ModeLogistique[] = [
+  "livraison_fournisseur", "retrait_trust", "les_deux",
+];
+
+const FOURNISSEURS_FICTIFS: Fournisseur[] = FOURNISSEURS.map((nom, i) => ({
+  id: `f-${i + 1}`,
+  nom,
+  pays: i % 4 === 3 ? "Italie" : "France",
+  mode: MODES_FICTIFS[i % MODES_FICTIFS.length],
+  delaiJours: 3 + ((i * 5) % 18),
+  depot: "argenteuil",
+}));
+
 const REPARTITION: { etape: Etape; nombre: number }[] = [
   { etape: "a_commander", nombre: 18 },
   { etape: "commandee", nombre: 14 },
@@ -257,6 +276,7 @@ export function creerEtatInitial(valeurGraine = GRAINE_PAR_DEFAUT): EtatScene {
   return {
     jour: 0,
     depots: DEPOTS,
+    fournisseurs: FOURNISSEURS_FICTIFS,
     caisses: reattribuerRangs(caisses),
     vehicules,
     anomalies,

@@ -103,8 +103,8 @@ export default function LaboVue3dPage() {
   const vueGenerale = useCallback(() => {
     const c = controles.current;
     if (!c) return;
-    c.target.set(0, 0, 0);
-    c.object.position.set(60, 52, 60);
+    c.target.set(0, 0, -12);
+    c.object.position.set(86, 72, 86);
     c.update();
   }, []);
 

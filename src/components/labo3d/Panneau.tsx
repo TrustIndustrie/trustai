@@ -1,6 +1,7 @@
 "use client";
 
 import { LIBELLES_ETAPE } from "@/lib/labo3d/etapes";
+import { LIBELLES_MODE } from "@/lib/labo3d/fournisseurs";
 import type { EtatScene, Selection } from "@/lib/labo3d/types";
 
 /**
@@ -197,6 +198,34 @@ export function Panneau({
                   </ul>
                 </div>
               )}
+            </section>
+          );
+        })()}
+
+      {selection?.genre === "fournisseur" &&
+        (() => {
+          const f = etat.fournisseurs.find((x) => x.id === selection.id);
+          if (!f) return null;
+          const lignes = etat.caisses.filter((c) => c.fournisseur === f.nom);
+          const bloquees = lignes.filter((c) => c.anomalie).length;
+          return (
+            <section className="flex flex-col gap-1">
+              <Titre>Fournisseur</Titre>
+              <p className="text-[15px] font-semibold text-white">{f.nom}</p>
+              <p className="mb-2 text-[12px] leading-relaxed text-slate-400">
+                Position schématique : la base ne renseigne ni adresse ni
+                ville, seulement le pays.
+              </p>
+              <div className="divide-y divide-white/5">
+                <Ligne cle="Pays" valeur={f.pays} />
+                <Ligne cle="Logistique" valeur={LIBELLES_MODE[f.mode]} />
+                <Ligne
+                  cle="Délai annoncé"
+                  valeur={f.delaiJours !== null ? `${f.delaiJours} jour(s)` : "non renseigné"}
+                />
+                <Ligne cle="Marchandise de ce fournisseur" valeur={lignes.length} />
+                <Ligne cle="Dont bloquée" valeur={bloquees} />
+              </div>
             </section>
           );
         })()}
