@@ -11,6 +11,7 @@ import {
   Eye,
   Database,
   FlaskConical,
+  Presentation,
 } from "lucide-react";
 import type { CodeDepot } from "@/lib/labo3d/types";
 
@@ -54,6 +55,8 @@ export function Simulateur({
   source,
   onSource,
   chargement,
+  presentation,
+  onPresentation,
   jour,
   lecture,
   vitesse,
@@ -72,6 +75,8 @@ export function Simulateur({
   source: "fictive" | "reelle";
   onSource: (s: "fictive" | "reelle") => void;
   chargement: boolean;
+  presentation: boolean;
+  onPresentation: () => void;
   jour: number;
   lecture: boolean;
   vitesse: number;
@@ -183,6 +188,13 @@ export function Simulateur({
       </Bouton>
       <Bouton onClick={onVueGenerale} titre="Recentre la caméra">
         Vue générale
+      </Bouton>
+      <Bouton
+        onClick={onPresentation}
+        actif={presentation}
+        titre="Fait tourner la caméra lentement, pour commenter sans piloter"
+      >
+        <Presentation size={14} aria-hidden /> Présentation
       </Bouton>
 
       {/* Un simple `ml-auto` se chevauchait avec le bouton précédent dès que

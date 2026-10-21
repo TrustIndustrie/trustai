@@ -38,6 +38,39 @@ export const PLAN: Record<CodeDepot, PlanDepot> = {
   },
 };
 
+/**
+ * L'identité visuelle de chaque site.
+ *
+ * Deux dépôts de la même teinte, ce sont deux boîtes qu'on confond. Argenteuil
+ * est le grand site du Nord, en ardoise bleutée ; La Penne est le site du Sud,
+ * en ocre. On reconnaît alors le lieu d'un coup d'œil, sans lire l'enseigne —
+ * et c'est ce qu'on demande à une vue d'ensemble.
+ */
+export interface Palette {
+  mur: string;
+  murSombre: string;
+  toit: string;
+  bandeau: string;
+  dalle: string;
+}
+
+export const PALETTES: Record<CodeDepot, Palette> = {
+  argenteuil: {
+    mur: "#e9e9ea",
+    murSombre: "#c9ccd2",
+    toit: "#49535f",
+    bandeau: "#2f6f9e",
+    dalle: "#c8c6c2",
+  },
+  aubagne: {
+    mur: "#f0e7da",
+    murSombre: "#d9c7b0",
+    toit: "#6d5347",
+    bandeau: "#b9623a",
+    dalle: "#cdc3b2",
+  },
+};
+
 /** Les trois magasins, posés en bordure de plateau. */
 export const PLAN_MAGASINS: { nom: string; position: [number, number, number] }[] = [
   { nom: "Trust Lisses", position: [-30, 0, -38] },

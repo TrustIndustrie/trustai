@@ -65,6 +65,7 @@ export default function LaboVue3dPage() {
     aubagne: false,
   });
   const [lecture, setLecture] = useState(false);
+  const [presentation, setPresentation] = useState(false);
   const [vitesse, setVitesse] = useState(1);
   const controles = useRef<ControlesType>(null);
 
@@ -176,6 +177,7 @@ export default function LaboVue3dPage() {
             selection={selection}
             survol={survol}
             ouverts={ouverts}
+            presentation={presentation}
             controles={controles}
             onSelection={setSelection}
             onSurvol={setSurvol}
@@ -292,6 +294,8 @@ export default function LaboVue3dPage() {
         source={source}
         onSource={setSource}
         chargement={chargementReel.phase === "chargement"}
+        presentation={presentation}
+        onPresentation={() => setPresentation((p) => !p)}
         jour={etat.jour}
         lecture={lecture}
         vitesse={vitesse}

@@ -4,7 +4,7 @@ import { useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { RoundedBox, Html } from "@react-three/drei";
 import type { Group } from "three";
-import { PLAN, rectangleZone } from "./geometrie";
+import { PLAN, PALETTES, rectangleZone } from "./geometrie";
 import type { Depot as DepotModele } from "@/lib/labo3d/types";
 
 /**
@@ -19,11 +19,7 @@ import type { Depot as DepotModele } from "@/lib/labo3d/types";
  * qui donne du relief sans coûter un triangle de plus à l'affichage.
  */
 
-const MUR = "#e8e4dc";
-const MUR_SOMBRE = "#d8d2c6";
-const TOIT = "#5d6672";
-const DALLE = "#cfc9bd";
-const VITRAGE = "#8fb4cc";
+const VITRAGE = "#9fc2d8";
 const PORTE = "#7d8794";
 
 interface Props {
@@ -47,6 +43,8 @@ export function Depot({
   anomalies,
 }: Props) {
   const p = PLAN[modele.code];
+  // Chaque site a sa teinte : deux dépôts gris se confondraient.
+  const C = PALETTES[modele.code];
   const toitRef = useRef<Group>(null);
   const q = p.orientationQuais;
 
@@ -108,19 +106,24 @@ export function Depot({
       {/* Dalle débordante : elle ancre le bâtiment au sol. */}
       <mesh receiveShadow position={[0, 0.05, 0]}>
         <boxGeometry args={[p.largeur + 5, 0.1, p.profondeur + 5]} />
-        <meshStandardMaterial color={DALLE} roughness={0.95} />
+        <meshStandardMaterial color={C.dalle} roughness={0.95} />
       </mesh>
 
-      {/* Marquage au sol devant les quais. */}
+      {/* Marquage au sol devant les quais : une aire claire bordée de deux
+          traits, comme une place de stationnement poids lourd. */}
       {quais.map((quai) => (
-        <mesh
-          key={`marquage-${quai.cle}`}
-          position={[quai.x, 0.11, q * (p.profondeur / 2 + 1.8)]}
-          rotation={[-Math.PI / 2, 0, 0]}
-        >
-          <planeGeometry args={[2.6, 3.2]} />
-          <meshStandardMaterial color="#bdb5a6" roughness={1} />
-        </mesh>
+        <group key={`marquage-${quai.cle}`}>
+          <mesh
+            position={[quai.x, 0.11, q * (p.profondeur / 2 + 2.4)]}
+            rotation={[-Math.PI / 2, 0, 0]}
+          >
+            <planeGeometry args={[2.9, 4.4]} />
+            <meshStandardMaterial color="#b8b1a3" roughness={1} />
+          </mesh>
+          {/* Pas de numéro de quai : une étiquette HTML posée à plat sur le
+              sol ne s'incline pas avec la scène et flotte au-dessus de la
+              chaussée. Le marquage peint suffit à lire « emplacement ». */}
+        </group>
       ))}
 
       {/* Corps du bâtiment : QUATRE MURS, pas un volume plein.
@@ -138,7 +141,7 @@ export function Depot({
             receiveShadow
           >
             <meshStandardMaterial
-              color={selectionne ? "#f4f1ea" : MUR}
+              color={selectionne ? "#ffffff" : C.mur}
               roughness={0.78}
               metalness={0.04}
               // Toit levé : les murs deviennent translucides, sinon celui
@@ -167,13 +170,27 @@ export function Depot({
               }
             />
             <meshStandardMaterial
-              color={MUR_SOMBRE}
+              color={C.murSombre}
               roughness={0.9}
               transparent={ouvert}
               opacity={ouvert ? 0.3 : 1}
             />
           </mesh>
         ))}
+
+        {/* Bandeau d'enseigne aux couleurs du site, en haut de la façade des
+            quais. C'est lui qui identifie le dépôt de loin, avant même qu'on
+            lise l'étiquette. */}
+        <mesh position={[0, p.hauteur - 0.55, q * (p.profondeur / 2 + 0.14)]} castShadow>
+          <boxGeometry args={[p.largeur + 0.3, 0.85, 0.2]} />
+          <meshStandardMaterial
+            color={C.bandeau}
+            roughness={0.55}
+            metalness={0.08}
+            transparent={ouvert}
+            opacity={ouvert ? 0.3 : 1}
+          />
+        </mesh>
 
         {/* Bandeau vitré en haut de façade, des deux côtés. */}
         {[1, -1].map((cote) => (
@@ -204,7 +221,7 @@ export function Depot({
           </mesh>
           <mesh position={[0, 3.6, q * 0.7]} castShadow>
             <boxGeometry args={[2.9, 0.18, 1.5]} />
-            <meshStandardMaterial color={TOIT} roughness={0.8} />
+            <meshStandardMaterial color={C.toit} roughness={0.8} />
           </mesh>
           {/* Butoirs de quai. */}
           {[-1, 1].map((c) => (
@@ -227,7 +244,7 @@ export function Depot({
         >
           <boxGeometry args={[p.largeur + 1.2, 0.4, p.profondeur + 1.2]} />
           <meshStandardMaterial
-            color={TOIT}
+            color={C.toit}
             roughness={0.85}
             transparent
             opacity={ouvert ? 0.12 : 1}

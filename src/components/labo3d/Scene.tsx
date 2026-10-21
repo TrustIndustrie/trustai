@@ -7,8 +7,10 @@ import { type RefObject } from "react";
 import { Depot } from "./Depot";
 import { Caisses } from "./Caisses";
 import { Vehicule } from "./Vehicule";
-import { Balisage, Chariot, Magasin, Ouvrier, Sol, Vegetation } from "./Decor";
-import { PLAN, PLAN_MAGASINS } from "./geometrie";
+import {
+  Balisage, Chariot, Eclairage, Magasin, Ouvrier, Sol, Vegetation,
+} from "./Decor";
+import { PLAN, PLAN_MAGASINS, PALETTES } from "./geometrie";
 import type { CodeDepot, EtatScene, Selection } from "@/lib/labo3d/types";
 
 /**
@@ -34,6 +36,8 @@ interface Props {
   selection: Selection;
   survol: string | null;
   ouverts: Record<CodeDepot, boolean>;
+  /** Mode présentation : la caméra tourne seule, pour commenter sans piloter. */
+  presentation: boolean;
   controles: RefObject<ControlesType>;
   onSelection: (s: Selection) => void;
   onSurvol: (id: string | null) => void;
@@ -45,6 +49,7 @@ export function Scene({
   selection,
   survol,
   ouverts,
+  presentation,
   controles,
   onSelection,
   onSurvol,
@@ -61,10 +66,16 @@ export function Scene({
       camera={{ position: [60, 52, 60], zoom: 9, near: -200, far: 400 }}
       onPointerMissed={() => onSelection(null)}
     >
-      <hemisphereLight args={["#eaf2ff", "#9a9583", 1.05]} />
+      {/* Trois lumières, et chacune a un rôle : le ciel et le sol donnent
+          l'ambiance, la clé chaude sculpte les volumes et porte l'ombre, le
+          remplissage froid empêche que les faces à l'ombre deviennent des
+          trous noirs. Une quatrième passe d'ombre coûterait plus cher que
+          tout ce qu'elle apporterait. */}
+      <hemisphereLight args={["#e6f0ff", "#a79f88", 0.95]} />
       <directionalLight
         position={[38, 52, 26]}
-        intensity={1.75}
+        color="#fff4e2"
+        intensity={1.9}
         castShadow
         shadow-mapSize={[2048, 2048]}
         shadow-camera-left={-70}
@@ -75,10 +86,13 @@ export function Scene({
         shadow-camera-far={180}
         shadow-bias={-0.0008}
       />
-      <directionalLight position={[-30, 24, -34]} intensity={0.32} color="#cfdcee" />
+      <directionalLight position={[-30, 24, -34]} intensity={0.34} color="#cfdcee" />
+      {/* Contre-jour rasant : il détache les toits du ciel. */}
+      <directionalLight position={[-18, 8, 44]} intensity={0.22} color="#ffe9cc" />
 
       <Sol />
       <Vegetation />
+      <Eclairage />
       <Balisage />
 
       {etat.depots.map((d) => {
@@ -101,11 +115,14 @@ export function Scene({
         );
       })}
 
+      {/* Les magasins du Nord portent le bleu d'Argenteuil, celui du Sud
+          l'ocre de La Penne : on lit le rattachement sans rien cliquer. */}
       {PLAN_MAGASINS.map((m) => (
         <Magasin
           key={m.nom}
           nom={m.nom}
           position={m.position}
+          couleur={m.position[2] > 0 ? PALETTES.aubagne.bandeau : PALETTES.argenteuil.bandeau}
           onClick={(nom) => onSelection({ genre: "magasin", nom })}
         />
       ))}
@@ -163,6 +180,10 @@ export function Scene({
         makeDefault
         enableDamping
         dampingFactor={0.08}
+        // Mode présentation : une rotation lente, assez pour donner du
+        // relief, assez peu pour ne pas donner le tournis à l'assistance.
+        autoRotate={presentation}
+        autoRotateSpeed={0.45}
         // On empêche de passer sous le sol et de regarder à la verticale :
         // la vue reste toujours lisible.
         minPolarAngle={Math.PI / 7}
