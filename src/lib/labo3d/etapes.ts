@@ -24,7 +24,9 @@ export const LIBELLES_ETAPE: Record<Etape, string> = {
   attendue: "Attendue",
   recue_argenteuil: "Reçue à Argenteuil",
   en_transfert: "En transfert",
-  recue_aubagne: "Reçue à Aubagne",
+  // La valeur reste `recue_aubagne` — c'est celle de la base. Seul
+  // l'affichage dit le vrai nom du site.
+  recue_aubagne: "Reçue à La Penne",
   disponible: "Disponible",
   sortie: "Sortie",
   annulee: "Annulée",

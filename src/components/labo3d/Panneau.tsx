@@ -129,7 +129,7 @@ export function Panneau({
                 <Ligne cle="Étape" valeur={LIBELLES_ETAPE[c.etape]} />
                 <Ligne cle="Quantité" valeur={c.quantite} />
                 <Ligne cle="Fournisseur" valeur={c.fournisseur} />
-                <Ligne cle="Dépôt de rattachement" valeur={c.depot === "argenteuil" ? "Argenteuil" : "Aubagne"} />
+                <Ligne cle="Dépôt de rattachement" valeur={c.depot === "argenteuil" ? "Argenteuil" : "La Penne-sur-Huveaune"} />
                 <Ligne cle="Jours dans cette étape" valeur={c.joursDansEtape} />
                 {c.clientPromis && <Ligne cle="Client promis" valeur={c.clientPromis} />}
               </div>

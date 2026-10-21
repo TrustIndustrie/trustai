@@ -33,6 +33,16 @@ describe("depotDuLibelle", () => {
     expect(depotDuLibelle("Entrepôt Aubàgne")).toBe("aubagne");
   });
 
+  // Le site est en réalité à La Penne-sur-Huveaune. Le jour où l'entrepôt est
+  // renommé dans la base, la marchandise du Sud ne doit PAS basculer
+  // silencieusement à Argenteuil — c'est le genre de panne qui ne lève
+  // aucune erreur et qu'on ne découvre qu'en comptant les caisses.
+  it("reconnaît aussi le vrai nom du site, avant et après renommage", () => {
+    expect(depotDuLibelle("Dépôt de La Penne-sur-Huveaune")).toBe("aubagne");
+    expect(depotDuLibelle("LA PENNE SUR HUVEAUNE")).toBe("aubagne");
+    expect(depotDuLibelle("Huveaune")).toBe("aubagne");
+  });
+
   it("rattache tout le reste à Argenteuil, y compris l'absence de libellé", () => {
     expect(depotDuLibelle("Dépôt d'Argenteuil")).toBe("argenteuil");
     expect(depotDuLibelle("Trust Herblay")).toBe("argenteuil");

@@ -35,7 +35,7 @@ export function Sol() {
         <meshStandardMaterial color="#a9b49c" roughness={1} />
       </mesh>
 
-      {/* La route : c'est elle qui raconte l'affrètement Argenteuil → Aubagne. */}
+      {/* La route : c'est elle qui raconte l'affrètement Argenteuil → La Penne. */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.02, milieu]} receiveShadow>
         <planeGeometry args={[ROUTE.largeur + 3.6, longueur + debord]} />
         <meshStandardMaterial color={BITUME} roughness={0.95} />

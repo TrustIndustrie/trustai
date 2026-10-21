@@ -44,8 +44,8 @@ export const DEPOTS: Depot[] = [
   },
   {
     code: "aubagne",
-    nom: "Dépôt d'Aubagne",
-    ville: "Aubagne",
+    nom: "Dépôt de La Penne-sur-Huveaune",
+    ville: "La Penne-sur-Huveaune",
     note: "Dépôt Sud, alimenté par affrètement depuis Argenteuil.",
     capacite: 90,
   },
@@ -116,7 +116,7 @@ function creerVehicules(alea: () => number): Vehicule[] {
       id: "v-transfert-1",
       immatriculation: "FICTIF-TR-01",
       role: "transfert",
-      libelle: "Affrètement Argenteuil → Aubagne",
+      libelle: "Affrètement Argenteuil → La Penne",
       livreur: null,
       progression: 0.34,
       vitesse: 0.22,
@@ -130,7 +130,7 @@ function creerVehicules(alea: () => number): Vehicule[] {
       id: "v-transfert-2",
       immatriculation: "FICTIF-TR-02",
       role: "transfert",
-      libelle: "Affrètement Argenteuil → Aubagne",
+      libelle: "Affrètement Argenteuil → La Penne",
       livreur: null,
       progression: 0.78,
       vitesse: 0.18,
@@ -158,7 +158,7 @@ function creerVehicules(alea: () => number): Vehicule[] {
       id: "v-livraison-2",
       immatriculation: "FICTIF-LV-12",
       role: "livraison",
-      libelle: "Tournée Sud — Aubagne",
+      libelle: "Tournée Sud — Marseille",
       livreur: "Sonia (fictif)",
       progression: 0.2 + alea() * 0.1,
       vitesse: 0.26,
@@ -412,7 +412,7 @@ export function provoquerTransfert(etat: EtatScene): EtatScene {
     ...base,
     journal: journaliser(
       base,
-      `Transfert lancé — ${lot.length} caisse(s) partent d'Argenteuil vers Aubagne.`,
+      `Transfert lancé — ${lot.length} caisse(s) partent d'Argenteuil vers La Penne.`,
     ),
   };
 }

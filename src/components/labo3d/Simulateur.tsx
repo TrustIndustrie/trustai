@@ -154,7 +154,7 @@ export function Simulateur({
       <Bouton
         onClick={onTransfert}
         desactive={reel}
-        titre={reel ? "Indisponible en données réelles" : "Charge un camion pour Aubagne"}
+        titre={reel ? "Indisponible en données réelles" : "Charge un camion pour La Penne"}
       >
         <Truck size={14} aria-hidden /> Lancer un transfert
       </Bouton>
@@ -179,7 +179,7 @@ export function Simulateur({
         <Eye size={14} aria-hidden /> Toit Argenteuil
       </Bouton>
       <Bouton onClick={() => onBasculerToit("aubagne")} actif={ouverts.aubagne}>
-        <Eye size={14} aria-hidden /> Toit Aubagne
+        <Eye size={14} aria-hidden /> Toit La Penne
       </Bouton>
       <Bouton onClick={onVueGenerale} titre="Recentre la caméra">
         Vue générale

@@ -48,18 +48,31 @@ function estEtape(valeur: string): valeur is Etape {
 }
 
 /**
+ * Les façons de nommer le dépôt du Sud.
+ *
+ * Le site n'est pas à Aubagne : il est à LA PENNE-SUR-HUVEAUNE, sur un site
+ * partagé avec le dépôt de Mobilier Malin. La base le nomme encore « Dépôt
+ * d'Aubagne », et ce nom sera corrigé. Les deux appellations doivent donc
+ * être reconnues, sinon le jour où l'entrepôt est renommé la marchandise du
+ * Sud bascule silencieusement à Argenteuil — une panne invisible, du genre
+ * qui ne lève aucune erreur et qu'on ne découvre qu'en comptant les caisses.
+ */
+const NOMS_DU_SUD = ["aubagne", "penne", "huveaune"];
+
+/**
  * Le dépôt d'une ligne, déduit du LIBELLÉ de l'entrepôt.
  *
  * La table `warehouses` n'a pas de colonne « code » : elle a un `name` et une
  * `city`. On rapproche donc sur le texte, sans accent ni casse. Tout ce qui
- * n'est pas Aubagne est rattaché à Argenteuil, qui est le dépôt d'entrée.
+ * n'est pas le dépôt du Sud est rattaché à Argenteuil, qui est le dépôt
+ * d'entrée.
  */
 export function depotDuLibelle(libelle: string | null | undefined): CodeDepot {
   const t = (libelle ?? "")
     .normalize("NFD")
     .replace(/[̀-ͯ]/g, "")
     .toLowerCase();
-  return t.includes("aubagne") ? "aubagne" : "argenteuil";
+  return NOMS_DU_SUD.some((n) => t.includes(n)) ? "aubagne" : "argenteuil";
 }
 
 /** Nombre de jours entiers écoulés depuis une date ISO, 0 si illisible. */
@@ -110,9 +123,9 @@ const DEPOTS_REELS: Depot[] = [
   },
   {
     code: "aubagne",
-    nom: "Dépôt d'Aubagne",
-    ville: "Aubagne",
-    note: "Dépôt du Sud, alimenté par affrètement depuis Argenteuil.",
+    nom: "Dépôt de La Penne-sur-Huveaune",
+    ville: "La Penne-sur-Huveaune",
+    note: "Dépôt du Sud, site partagé avec Mobilier Malin, alimenté par affrètement depuis Argenteuil.",
     capacite: CAPACITES.aubagne,
   },
 ];
