@@ -1,5 +1,5 @@
 import type { LogisticsLineRow } from "@/lib/types";
-import { zoneDeLEtape } from "./etapes";
+import { reattribuerRangs } from "./rangs";
 import type {
   Anomalie,
   Caisse,
@@ -131,7 +131,6 @@ export function etatDepuisLignes(
   const maintenant = options.maintenant ?? Date.now();
   const caisses: Caisse[] = [];
   const anomalies: Anomalie[] = [];
-  const rangs = new Map<string, number>();
   const affretements = new Map<string, { caisses: number; depart: CodeDepot }>();
   let ignorees = 0;
 
@@ -145,10 +144,6 @@ export function etatDepuisLignes(
     }
 
     const depot = depotDuLibelle(ligne.destination_label ?? ligne.current_label);
-    const cle = `${depot}|${zoneDeLEtape(etape)}`;
-    const rang = rangs.get(cle) ?? 0;
-    rangs.set(cle, rang + 1);
-
     // L'anomalie réelle a deux visages : une anomalie ouverte tranchée par
     // l'équipe, ou une ligne qui a disparu du récapitulatif.
     const ouvertes = Number(ligne.open_anomalies ?? 0);
@@ -178,7 +173,9 @@ export function etatDepuisLignes(
       etape,
       depot,
       joursDansEtape: joursDepuis(ligne.last_changed_at ?? ligne.last_seen_at, maintenant),
-      rang,
+      // Place provisoire : `reattribuerRangs` la fixe une fois la liste
+      // complète, en tenant compte du camion qui porte la caisse.
+      rang: 0,
       vehiculeId: affretement ? `aff-${affretement}` : null,
       anomalie,
       clientPromis: ligne.customer_label ? String(ligne.customer_label) : null,
@@ -219,7 +216,7 @@ export function etatDepuisLignes(
     etat: {
       jour: 0,
       depots: DEPOTS_REELS,
-      caisses,
+      caisses: reattribuerRangs(caisses),
       vehicules,
       anomalies,
       journal: [

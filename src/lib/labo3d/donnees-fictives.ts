@@ -1,4 +1,5 @@
 import { etapeSuivante } from "./etapes";
+import { reattribuerRangs } from "./rangs";
 import type {
   Anomalie,
   Caisse,
@@ -256,7 +257,7 @@ export function creerEtatInitial(valeurGraine = GRAINE_PAR_DEFAUT): EtatScene {
   return {
     jour: 0,
     depots: DEPOTS,
-    caisses,
+    caisses: reattribuerRangs(caisses),
     vehicules,
     anomalies,
     journal: [
@@ -279,6 +280,33 @@ function journaliser(etat: EtatScene, texte: string): EtatScene["journal"] {
 }
 
 /** Avance d'un jour simulé : la marchandise progresse, les camions roulent. */
+/**
+ * Une caisse livrée quitte le site, et un nouveau besoin prend sa place.
+ *
+ * Sans cela la simulation était à SENS UNIQUE : la marchandise progressait
+ * jusqu'à « sortie » et rien ne réapprovisionnait jamais. Au bout d'environ
+ * deux cents jours le plateau se vidait et le journal tournait à vide — ce
+ * qu'une lecture auto laissée tourner longtemps a fini par révéler.
+ *
+ * On RECYCLE la caisse au lieu d'en créer une nouvelle, et au lieu de la
+ * supprimer : l'affichage instancié est dimensionné une fois pour toutes, et
+ * un entrepôt réel travaille de toute façon à flux constant.
+ */
+function renouvelerCaisse(c: Caisse, alea: () => number): Caisse {
+  return {
+    ...c,
+    designation: ARTICLES[Math.floor(alea() * ARTICLES.length)],
+    fournisseur: FOURNISSEURS[Math.floor(alea() * FOURNISSEURS.length)],
+    quantite: 1 + Math.floor(alea() * 3),
+    etape: "a_commander",
+    depot: alea() < 0.34 ? "aubagne" : "argenteuil",
+    joursDansEtape: 0,
+    vehiculeId: null,
+    anomalie: null,
+    clientPromis: null,
+  };
+}
+
 export function avancerJour(etat: EtatScene): EtatScene {
   const jour = etat.jour + 1;
   const alea = graine(GRAINE_PAR_DEFAUT + jour * 7919);
@@ -296,7 +324,21 @@ export function avancerJour(etat: EtatScene): EtatScene {
     return { ...v, progression };
   });
 
+  let soldees = 0;
+
   const caisses = etat.caisses.map((c) => {
+    // La marchandise sortie est arrivée chez le client au bout de quelques
+    // jours : le besoin repart alors à zéro.
+    if (c.etape === "sortie" && c.joursDansEtape >= 3) {
+      soldees += 1;
+      return renouvelerCaisse(c, alea);
+    }
+    // Une commande annulée libère sa place au bout d'une semaine.
+    if (c.etape === "annulee" && c.joursDansEtape >= 6) {
+      soldees += 1;
+      return renouvelerCaisse(c, alea);
+    }
+
     // Une caisse bloquée par une anomalie ne progresse pas : c'est tout
     // l'intérêt de la voir en rouge et immobile.
     if (c.anomalie) {
@@ -320,12 +362,18 @@ export function avancerJour(etat: EtatScene): EtatScene {
     return { ...c, joursDansEtape: c.joursDansEtape + 1 };
   });
 
-  const base: EtatScene = { ...etat, jour, caisses, vehicules };
+  const base: EtatScene = {
+    ...etat,
+    jour,
+    caisses: reattribuerRangs(caisses),
+    vehicules,
+  };
   return {
     ...base,
     journal: journaliser(
       base,
-      `Jour ${jour} — ${avancees} mouvement(s) de marchandise, ${arrivees} camion(s) à quai.`,
+      `Jour ${jour} — ${avancees} mouvement(s) de marchandise, ${arrivees} camion(s) à quai` +
+        (soldees > 0 ? `, ${soldees} livraison(s) soldée(s) et réapprovisionnée(s).` : "."),
     ),
   };
 }
@@ -359,7 +407,7 @@ export function provoquerTransfert(etat: EtatScene): EtatScene {
     v.id === camion.id ? { ...v, progression: 0.02, caisses: lot.length } : v,
   );
 
-  const base = { ...etat, caisses, vehicules };
+  const base = { ...etat, caisses: reattribuerRangs(caisses), vehicules };
   return {
     ...base,
     journal: journaliser(
@@ -418,15 +466,20 @@ export function livrerTournee(etat: EtatScene): EtatScene {
   }
 
   const ids = livrees.map((c) => c.id);
-  // Une caisse livrée disparaît du plateau : elle est chez le client.
-  const caisses = etat.caisses.filter((c) => !ids.includes(c.id));
+  // La caisse livrée est chez le client, mais elle ne DISPARAÎT pas : elle
+  // redevient un besoin à commander. La supprimer vidait le plateau tournée
+  // après tournée, exactement comme la simulation se vidait jour après jour.
+  const alea = graine(GRAINE_PAR_DEFAUT + etat.jour * 7907 + ids.length);
+  const caisses = etat.caisses.map((c) =>
+    ids.includes(c.id) ? renouvelerCaisse(c, alea) : c,
+  );
   const vehicules = etat.vehicules.map((v) =>
     v.id === camion.id
       ? { ...v, caisses: 0, passagesRestants: Math.max(0, v.passagesRestants - ids.length) }
       : v,
   );
 
-  const base = { ...etat, caisses, vehicules };
+  const base = { ...etat, caisses: reattribuerRangs(caisses), vehicules };
   return {
     ...base,
     journal: journaliser(
