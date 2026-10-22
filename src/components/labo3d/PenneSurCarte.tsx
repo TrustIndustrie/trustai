@@ -1,7 +1,7 @@
 "use client";
 
-import { Html } from "@react-three/drei";
 import { DepotPenne } from "./DepotPenne";
+import { Cartouche, PlaqueAuSol } from "./Etiquette";
 import { PLAN } from "./geometrie";
 import { PENNE } from "@/lib/labo3d/depot-penne";
 
@@ -30,17 +30,21 @@ const ECHELLE =
 export function PenneSurCarte({
   ouvert,
   selectionne,
+  survole,
   occupation,
   anomalies,
   nom,
+  onSurvol,
   onClickBatiment,
   onClickToit,
 }: {
   ouvert: boolean;
   selectionne: boolean;
+  survole: boolean;
   occupation: number;
   anomalies: number;
   nom: string;
+  onSurvol: (id: string | null) => void;
   onClickBatiment: () => void;
   onClickToit: () => void;
 }) {
@@ -64,6 +68,11 @@ export function PenneSurCarte({
           c'est elle qui rend le dépôt cliquable comme les autres. */}
       <mesh
         position={[0, H / 2, 0]}
+        onPointerOver={(e) => {
+          e.stopPropagation();
+          onSurvol("depot:aubagne");
+        }}
+        onPointerOut={() => onSurvol(null)}
         onClick={(e) => {
           e.stopPropagation();
           onClickBatiment();
@@ -92,18 +101,35 @@ export function PenneSurCarte({
         />
       </mesh>
 
-      <Html position={[0, H + 5, 0]} center zIndexRange={[20, 0]}>
-        <div className="pointer-events-none select-none whitespace-nowrap rounded-md border border-white/20 bg-slate-900/85 px-3 py-1.5 text-center shadow-lg backdrop-blur-sm">
-          <div className="text-[13px] font-semibold leading-tight text-white">{nom}</div>
-          <div className="text-[11px] leading-tight text-slate-300">
-            {Math.round(occupation * 100)} % occupé
-            {anomalies > 0 ? ` · ${anomalies} anomalie(s)` : ""}
-          </div>
-          <div className="text-[9px] leading-tight text-amber-300/70">
-            implantation réelle · 1 quai
-          </div>
+      {/* LE NOM EST AU SOL, sur le terre-plein à gauche du bâtiment — pas sur
+          la chaussée, où il se serait superposé au passage piéton et aux
+          marquages du quai. Il suit le zoom et ne masque jamais rien. */}
+      <PlaqueAuSol
+        position={[-W / 2 - 8, 0.17, -L / 2 + 7]}
+        lignes={[
+          { texte: nom, taille: 42 },
+          {
+            texte: "implantation réelle · 1 quai",
+            taille: 26,
+            graisse: 400,
+            couleur: "#f3c99a",
+          },
+        ]}
+        fond="rgba(15, 23, 42, 0.8)"
+        cadre="rgba(185, 98, 58, 0.55)"
+      />
+
+      {/* Le détail chiffré, seulement quand on désigne le dépôt. */}
+      <Cartouche position={[0, H + 4, 0]} visible={selectionne || survole}>
+        <div className="text-[13px] font-semibold leading-tight text-white">{nom}</div>
+        <div className="text-[11px] leading-tight text-slate-300">
+          {Math.round(occupation * 100)} % occupé
+          {anomalies > 0 ? ` · ${anomalies} anomalie(s)` : ""}
         </div>
-      </Html>
+        <div className="text-[9px] leading-tight text-amber-300/70">
+          bâtiment réel · rack en L · 1 quai à rideau
+        </div>
+      </Cartouche>
     </group>
   );
 }

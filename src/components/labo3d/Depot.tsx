@@ -2,8 +2,9 @@
 
 import { useMemo, useRef, useState } from "react";
 import { useFrame } from "@react-three/fiber";
-import { RoundedBox, Html } from "@react-three/drei";
+import { RoundedBox } from "@react-three/drei";
 import type { Group } from "three";
+import { Cartouche, PlaqueAuSol } from "./Etiquette";
 import { PLAN, PALETTES, rectangleZone } from "./geometrie";
 import type { Depot as DepotModele } from "@/lib/labo3d/types";
 
@@ -27,6 +28,8 @@ interface Props {
   /** Toit levé : on voit l'intérieur. */
   ouvert: boolean;
   selectionne: boolean;
+  survole: boolean;
+  onSurvol: (id: string | null) => void;
   onClickBatiment: () => void;
   onClickToit: () => void;
   occupation: number;
@@ -37,6 +40,8 @@ export function Depot({
   modele,
   ouvert,
   selectionne,
+  survole,
+  onSurvol,
   onClickBatiment,
   onClickToit,
   occupation,
@@ -191,7 +196,11 @@ export function Depot({
       {/* Corps du bâtiment : QUATRE MURS, pas un volume plein.
           Un bloc plein paraît identique de l'extérieur mais ne révèle rien
           quand on lève le toit — c'est une coque qu'il faut. */}
-      <group onClick={(e) => { e.stopPropagation(); onClickBatiment(); }}>
+      <group
+        onPointerOver={(e) => { e.stopPropagation(); onSurvol(`depot:${modele.code}`); }}
+        onPointerOut={() => onSurvol(null)}
+        onClick={(e) => { e.stopPropagation(); onClickBatiment(); }}
+      >
         {murs
           .filter((m) => !masques.current.has(m.cle))
           .map((m) => (
@@ -347,22 +356,30 @@ export function Depot({
           );
         })}
 
-      {/* Enseigne du dépôt : du HTML, donc net à tout niveau de zoom. */}
-      <Html
+      {/* L'ENSEIGNE EST AU SOL, devant les quais. Un cartouche HTML garde une
+          taille fixe à l'écran : vingt cartouches suspendus au-dessus du
+          plateau masquaient les bâtiments qu'ils nommaient. Peint au sol, le
+          nom suit le zoom et ne cache rien. */}
+      <PlaqueAuSol
+        position={[0, 0.17, q * (p.profondeur / 2 + 6)]}
+        lignes={[{ texte: modele.nom, taille: 42 }]}
+        fond="rgba(15, 23, 42, 0.8)"
+        cadre={`${C.bandeau}99`}
+      />
+
+      {/* Le chiffré n'apparaît qu'au survol ou à la sélection. */}
+      <Cartouche
         position={[0, p.hauteur + (ouvert ? 8.5 : 4.6), 0]}
-        center
-        zIndexRange={[20, 0]}
+        visible={selectionne || survole}
       >
-        <div className="pointer-events-none select-none whitespace-nowrap rounded-md border border-white/20 bg-slate-900/85 px-3 py-1.5 text-center shadow-lg backdrop-blur-sm">
-          <div className="text-[13px] font-semibold leading-tight text-white">
-            {modele.nom}
-          </div>
-          <div className="text-[11px] leading-tight text-slate-300">
-            {Math.round(occupation * 100)} % occupé
-            {anomalies > 0 ? ` · ${anomalies} anomalie(s)` : ""}
-          </div>
+        <div className="text-[13px] font-semibold leading-tight text-white">
+          {modele.nom}
         </div>
-      </Html>
+        <div className="text-[11px] leading-tight text-slate-300">
+          {Math.round(occupation * 100)} % occupé
+          {anomalies > 0 ? ` · ${anomalies} anomalie(s)` : ""}
+        </div>
+      </Cartouche>
     </group>
   );
 }

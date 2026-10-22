@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
-import { RoundedBox, Html } from "@react-three/drei";
+import { RoundedBox } from "@react-three/drei";
 import { Color, Object3D } from "three";
 import type { Group, InstancedMesh } from "three";
 import {
@@ -13,6 +13,7 @@ import {
   ROUTE,
   positionSurRoute,
 } from "./geometrie";
+import { PlaqueAuSol, textureEtiquette } from "./Etiquette";
 import type { CodeDepot } from "@/lib/labo3d/types";
 
 /**
@@ -398,11 +399,15 @@ export function Magasin({
         <meshStandardMaterial color="#59606b" roughness={0.85} />
       </mesh>
 
-      <Html position={[0, 5.4, 0]} center zIndexRange={[16, 0]}>
-        <div className="pointer-events-none select-none whitespace-nowrap rounded border border-white/20 bg-slate-900/80 px-2 py-0.5 text-[11px] font-medium text-white shadow">
-          {nom}
-        </div>
-      </Html>
+      {/* L'enseigne au sol, sur le trottoir devant la vitrine : elle suit le
+          zoom au lieu de flotter au-dessus du toit. */}
+      <PlaqueAuSol
+        position={[0, 0.17, 5.6]}
+        lignes={[{ texte: nom, taille: 34 }]}
+        fond="rgba(15, 23, 42, 0.78)"
+        cadre={`${couleur}99`}
+        echelle={0.85}
+      />
     </group>
   );
 }
@@ -556,6 +561,32 @@ export function Eclairage({ nuit = false }: { nuit?: boolean }) {
 export function Balisage() {
   const milieu = positionSurRoute(0.5);
 
+  // Le texte du panneau, peint une fois pour toutes : son contenu ne dépend
+  // que de deux constantes.
+  const inscription = useMemo(
+    () =>
+      textureEtiquette(
+        [
+          {
+            texte: "AFFRÈTEMENT",
+            taille: 26,
+            graisse: 700,
+            couleur: "#bfdcf5",
+            espacement: 5,
+          },
+          { texte: `${DISTANCE_REELLE_KM} km · ~${DUREE_REELLE_HEURES} h`, taille: 48 },
+          {
+            texte: "échelle de la scène rompue",
+            taille: 22,
+            graisse: 400,
+            couleur: "#9fc4e4",
+          },
+        ],
+        { fond: "#24405c", cadre: "rgba(125, 190, 235, 0.45)", largeurPx: 440, hauteurPx: 156 },
+      )?.texture ?? null,
+    [],
+  );
+
   return (
     <group>
       {[0.1, 0.3, 0.7, 0.9].map((t) => {
@@ -581,28 +612,20 @@ export function Balisage() {
             <meshStandardMaterial color="#8a9099" roughness={0.6} metalness={0.3} />
           </mesh>
         ))}
-        {/* Le caisson reste discret : l'inscription est en HTML, qui garde
-            une taille fixe à l'écran alors que la géométrie, elle, rétrécit au
-            dézoom. Les faire coïncider à tous les niveaux de zoom est
-            impossible — autant assumer une étiquette lisible posée sur un
-            support sobre. */}
+        {/* L'INSCRIPTION EST PEINTE SUR LE CAISSON, et non plus posée devant
+            lui en HTML. L'étiquette HTML gardait une taille fixe à l'écran :
+            au dézoom, elle débordait d'un panneau devenu minuscule et finissait
+            par masquer la route. Peinte, elle rétrécit avec son support. */}
         <mesh position={[0, 3.5, 0]} castShadow>
           <boxGeometry args={[4.6, 1.7, 0.16]} />
           <meshStandardMaterial color="#24405c" roughness={0.6} />
         </mesh>
-        <Html position={[0, 3.5, 0.2]} center zIndexRange={[14, 0]}>
-          <div className="pointer-events-none select-none whitespace-nowrap rounded-md border border-sky-300/30 bg-[#24405c]/95 px-2.5 py-1 text-center leading-tight shadow-lg">
-            <div className="text-[9px] font-semibold tracking-[0.18em] text-sky-200/80">
-              AFFRÈTEMENT
-            </div>
-            <div className="text-[13px] font-semibold text-white">
-              {DISTANCE_REELLE_KM} km · ~{DUREE_REELLE_HEURES} h
-            </div>
-            <div className="text-[9px] text-sky-200/70">
-              échelle de la scène rompue
-            </div>
-          </div>
-        </Html>
+        {[-1, 1].map((face) => (
+          <mesh key={face} position={[0, 3.5, face * 0.09]} rotation={[0, face > 0 ? 0 : Math.PI, 0]}>
+            <planeGeometry args={[4.4, 1.56]} />
+            <meshBasicMaterial map={inscription ?? undefined} toneMapped={false} transparent />
+          </mesh>
+        ))}
       </group>
     </group>
   );

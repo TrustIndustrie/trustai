@@ -1,6 +1,7 @@
 "use client";
 
-import { Html, RoundedBox } from "@react-three/drei";
+import { RoundedBox } from "@react-three/drei";
+import { Cartouche, PlaqueAuSol } from "./Etiquette";
 import {
   COULEURS_MODE,
   LIBELLES_MODE,
@@ -122,15 +123,25 @@ export function SiteFournisseur({
         </mesh>
       </group>
 
-      <Html position={[0, 5.4, 0]} center zIndexRange={[15, 0]}>
-        <div className="pointer-events-none select-none whitespace-nowrap rounded border border-white/15 bg-slate-900/85 px-2 py-0.5 text-center shadow">
-          <div className="text-[11px] font-medium text-white">{fournisseur.nom}</div>
-          <div className="text-[9px]" style={{ color: couleur }}>
-            {LIBELLES_MODE[fournisseur.mode]}
-            {fournisseur.delaiJours !== null ? ` · ${fournisseur.delaiJours} j` : ""}
-          </div>
+      {/* LE NOM AU SOL, SUR LA PLATEFORME. Quatorze cartouches HTML suspendus
+          au-dessus du plateau se chevauchaient et masquaient les dépôts :
+          peints au sol, les noms tiennent dans l'emprise de leur site. */}
+      <PlaqueAuSol
+        position={[0, 0.17, profondeur / 2 + 1.1]}
+        lignes={[{ texte: fournisseur.nom, taille: 32 }]}
+        fond="rgba(15, 23, 42, 0.8)"
+        cadre={`${couleur}99`}
+        echelle={0.8}
+      />
+
+      {/* Le mode logistique et le délai : seulement quand on désigne le site. */}
+      <Cartouche position={[0, 5.2, 0]} visible={survole} zIndex={15}>
+        <div className="text-[11px] font-medium text-white">{fournisseur.nom}</div>
+        <div className="text-[9px]" style={{ color: couleur }}>
+          {LIBELLES_MODE[fournisseur.mode]}
+          {fournisseur.delaiJours !== null ? ` · ${fournisseur.delaiJours} j` : ""}
         </div>
-      </Html>
+      </Cartouche>
     </group>
   );
 }

@@ -142,8 +142,10 @@ export function Scene({
               nom={d.nom}
               ouvert={ouverts[d.code]}
               selectionne={selection?.genre === "depot" && selection.code === d.code}
+              survole={survol === `depot:${d.code}`}
               occupation={Math.min(1, presentes / d.capacite)}
               anomalies={anomalies}
+              onSurvol={onSurvol}
               onClickBatiment={() => onSelection({ genre: "depot", code: d.code })}
               onClickToit={() => onBasculerToit(d.code)}
             />
@@ -156,8 +158,10 @@ export function Scene({
             modele={d}
             ouvert={ouverts[d.code]}
             selectionne={selection?.genre === "depot" && selection.code === d.code}
+            survole={survol === `depot:${d.code}`}
             occupation={Math.min(1, presentes / d.capacite)}
             anomalies={anomalies}
+            onSurvol={onSurvol}
             onClickBatiment={() => onSelection({ genre: "depot", code: d.code })}
             onClickToit={() => onBasculerToit(d.code)}
           />

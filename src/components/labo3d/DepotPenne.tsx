@@ -182,7 +182,11 @@ export function DepotPenne({
       </Html>
       )}
 
-      <BlocBureaux largeurBatiment={W} etiquettes={etiquettes} />
+      {/* Le bloc bureaux. Son PLAFOND n'est posé que sur la carte d'ensemble :
+          là-bas, il faut que le bloc se lise comme un volume depuis le ciel,
+          alors qu'ici — dans la vue dépôt, en écorché — on veut au contraire
+          voir le couloir et les deux portes. */}
+      <BlocBureaux largeurBatiment={W} etiquettes={etiquettes} plafond={!etiquettes} />
     </group>
   );
 }
@@ -408,9 +412,12 @@ function Rack({
 function BlocBureaux({
   largeurBatiment,
   etiquettes,
+  plafond,
 }: {
   largeurBatiment: number;
   etiquettes: boolean;
+  /** Plafond fermé : le bloc devient un volume, lisible de loin. */
+  plafond: boolean;
 }) {
   const B = PENNE.bureaux;
   const x0 = B.reculDepuisEntree.valeur;
@@ -428,6 +435,20 @@ function BlocBureaux({
   const zMur = largeurBatiment - 0.4;
   const hauteur = 2.6;
 
+  // L'emprise du bloc : du mur de droite vers l'intérieur, et de l'entrée du
+  // couloir jusqu'au-delà des sanitaires.
+  const xMin = x0 - 0.2;
+  const xMax = x0 + couloirL + 2.8;
+  const zMax = zMur + 0.2;
+  const zMin = zMax - 7.2;
+
+  // À LA TAILLE D'UN SYMBOLE DE CARTE, LA COULEUR FAIT LE TRAVAIL. Des
+  // cloisons crème dans un bâtiment crème ne se distinguaient pas : en mode
+  // carte, le bloc prend une teinte froide d'un bout à l'autre et devient le
+  // seul volume bleuté du site. Dans la vue dépôt, où l'on est à hauteur
+  // d'homme, il garde sa teinte de plâtre.
+  const couleurCloison = plafond ? "#b4c4d7" : "#e3dcd0";
+
   const cloison = (
     position: [number, number, number],
     taille: [number, number, number],
@@ -435,21 +456,74 @@ function BlocBureaux({
   ) => (
     <mesh key={cle} position={position} castShadow receiveShadow>
       <boxGeometry args={taille} />
-      <meshStandardMaterial color="#e3dcd0" roughness={0.85} />
+      <meshStandardMaterial color={couleurCloison} roughness={0.85} />
     </mesh>
   );
 
   return (
     <group>
-      {/* Dalle du bloc, pour qu'il se détache du sol du dépôt. */}
+      {/* L'EMPRISE DU BLOC, calculée une fois et partagée par la dalle, les
+          murs et le plafond. Elle était auparavant écrite trois fois avec
+          trois valeurs différentes : la dalle débordait du bâtiment et le
+          plafond ne tombait pas sur ses murs. */}
       <mesh
-        position={[x0 + couloirL / 2, 0.13, zMur - 2.4]}
+        position={[(xMin + xMax) / 2, 0.13, (zMin + zMax) / 2]}
         rotation={[-Math.PI / 2, 0, 0]}
         receiveShadow
       >
-        <planeGeometry args={[couloirL + largeurMM + 2, 7.5]} />
+        <planeGeometry args={[xMax - xMin, zMax - zMin]} />
         <meshStandardMaterial color="#d7d2c6" roughness={1} />
       </mesh>
+
+      {/* LES MURS DU BLOC. Sans eux, le bloc n'était qu'un jeu de cloisons
+          posées sur une dalle : à la taille d'un symbole de carte, on ne
+          voyait rien du tout. Avec eux, c'est un bâtiment dans le bâtiment.
+
+          La façade côté dépôt est percée de la porte du couloir : deux pans
+          de part et d'autre, comme pour l'entrée du bâtiment. */}
+      {cloison(
+        [xMin, hauteur / 2, (zMin + (zMur - couloirW - couloirW / 2)) / 2],
+        [0.2, hauteur, Math.max(0.2, zMur - couloirW - couloirW / 2 - zMin)],
+        "facade-avant",
+      )}
+      {cloison(
+        [xMin, hauteur / 2, (zMur - couloirW + couloirW / 2 + zMax) / 2],
+        [0.2, hauteur, Math.max(0.2, zMax - (zMur - couloirW + couloirW / 2))],
+        "facade-arriere",
+      )}
+      {cloison(
+        [xMax, hauteur / 2, (zMin + zMax) / 2],
+        [0.2, hauteur, zMax - zMin],
+        "pignon-fond",
+      )}
+      {cloison(
+        [(xMin + xMax) / 2, hauteur / 2, zMin],
+        [xMax - xMin, hauteur, 0.2],
+        "long-pan",
+      )}
+
+      {plafond && (
+        <group>
+          {/* Le plafond des bureaux — celui qu'ont réellement des bureaux
+              fermés sous une toiture d'entrepôt. C'est lui qui donne au bloc
+              un volume et une couleur à lui : le seul volume froid d'un
+              bâtiment ocre, reconnaissable sans étiquette. */}
+          <mesh
+            position={[(xMin + xMax) / 2, hauteur + 0.12, (zMin + zMax) / 2]}
+            castShadow
+            receiveShadow
+          >
+            <boxGeometry args={[xMax - xMin, 0.24, zMax - zMin]} />
+            <meshStandardMaterial color="#5d7da6" roughness={0.75} />
+          </mesh>
+          {/* L'acrotère : un filet plus clair sur le pourtour. Sans lui, vu de
+              dessus, le bloc se confond avec son ombre. */}
+          <mesh position={[(xMin + xMax) / 2, hauteur + 0.3, (zMin + zMax) / 2]}>
+            <boxGeometry args={[xMax - xMin + 0.4, 0.14, zMax - zMin + 0.4]} />
+            <meshStandardMaterial color="#9db6d1" roughness={0.8} />
+          </mesh>
+        </group>
+      )}
 
       {/* Le couloir : deux cloisons parallèles, porte battante côté dépôt. */}
       {cloison(
