@@ -150,7 +150,12 @@ export function Depot({
 
   // Les portes de quai, réparties sur la façade côté route.
   const quais = useMemo(() => {
-    const nombre = modele.code === "argenteuil" ? 5 : 3;
+    // La Penne n'a QU'UN SEUL quai, confondu avec la porte d'entrée et fermé
+    // par un rideau métallique — confirmé par Farouk le 22 octobre. J'en
+    // avais dessiné trois : c'était une invention, et elle donnait une fausse
+    // idée de la capacité du site. Les cinq quais d'Argenteuil restent une
+    // hypothèse non vérifiée.
+    const nombre = modele.code === "argenteuil" ? 5 : 1;
     const pas = (p.largeur - 6) / Math.max(1, nombre - 1);
     return Array.from({ length: nombre }, (_, i) => ({
       x: -(p.largeur - 6) / 2 + i * pas,

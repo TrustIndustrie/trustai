@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef } from "react";
 import { Html } from "@react-three/drei";
-import { Object3D, type InstancedMesh } from "three";
+import { Color, Object3D, type InstancedMesh } from "three";
 import { PENNE, abscissesRacks } from "@/lib/labo3d/depot-penne";
 
 /**
@@ -22,6 +22,7 @@ import { PENNE, abscissesRacks } from "@/lib/labo3d/depot-penne";
  */
 
 const pivot = new Object3D();
+const teinte = new Color();
 
 const MUR = "#efe8dc";
 const DALLE = "#c9c4ba";
@@ -77,14 +78,27 @@ export function DepotPenne({ ouvert = true }: { ouvert?: boolean }) {
               <boxGeometry args={[0.4, 2.4, apres]} />
               <meshStandardMaterial color={MUR} roughness={0.8} />
             </mesh>
-            {/* Le marquage de la porte, au sol. */}
-            <mesh position={[0.8, 0.12, d]} rotation={[-Math.PI / 2, 0, 0]}>
-              <planeGeometry args={[3, l]} />
+            {/* Le marquage au sol : c'est le QUAI autant que l'entrée. */}
+            <mesh position={[1.4, 0.12, d]} rotation={[-Math.PI / 2, 0, 0]}>
+              <planeGeometry args={[4.4, l]} />
               <meshStandardMaterial color="#e8dfc8" roughness={1} />
             </mesh>
-            <Html position={[-2.5, 2.4, d]} center zIndexRange={[16, 0]}>
-              <div className="pointer-events-none select-none whitespace-nowrap rounded border border-white/20 bg-slate-900/85 px-2 py-0.5 text-[11px] font-medium text-white shadow">
-                Entrée
+            {/* Les deux traits qui bornent l'emplacement camion, dehors. */}
+            {[-1, 1].map((c) => (
+              <mesh
+                key={c}
+                position={[-4, 0.12, d + (c * l) / 2]}
+                rotation={[-Math.PI / 2, 0, 0]}
+              >
+                <planeGeometry args={[9, 0.18]} />
+                <meshStandardMaterial color="#efe9d8" roughness={0.9} />
+              </mesh>
+            ))}
+            <RideauMetallique largeur={l} position={[0, 0, d]} />
+            <Html position={[-6.5, 4.6, d]} center zIndexRange={[16, 0]}>
+              <div className="pointer-events-none select-none whitespace-nowrap rounded border border-white/20 bg-slate-900/85 px-2 py-1 text-center shadow">
+                <div className="text-[11px] font-medium text-white">Entrée · quai unique</div>
+                <div className="text-[9px] text-slate-400">rideau métallique</div>
               </div>
             </Html>
           </group>
@@ -99,6 +113,7 @@ export function DepotPenne({ ouvert = true }: { ouvert?: boolean }) {
         profondeur={PENNE.rackEnL.profondeur.valeur}
         sens="longueur"
         visible={ouvert}
+        charge
       />
       <Rack
         depart={[0, 0]}
@@ -106,6 +121,7 @@ export function DepotPenne({ ouvert = true }: { ouvert?: boolean }) {
         profondeur={PENNE.rackEnL.profondeur.valeur}
         sens="largeur"
         visible={ouvert}
+        charge
       />
 
       {/* LE RACK PARALLÈLE : même extrémité au fond, départ reculé de 20 m. */}
@@ -115,6 +131,7 @@ export function DepotPenne({ ouvert = true }: { ouvert?: boolean }) {
         profondeur={PENNE.rackParallele.profondeur.valeur}
         sens="longueur"
         visible={ouvert}
+        charge
       />
 
       {/* L'allée de travail, marquée au sol : c'est elle qui donne l'échelle
@@ -155,6 +172,62 @@ export function DepotPenne({ ouvert = true }: { ouvert?: boolean }) {
 }
 
 /**
+ * LE RIDEAU MÉTALLIQUE — l'unique ouverture du dépôt.
+ *
+ * Entrée ET quai de chargement : tout entre et tout sort par là. C'est une
+ * contrainte d'exploitation, pas un détail de décor — une réception et une
+ * expédition ne peuvent pas se faire en même temps.
+ *
+ * Dessiné enroulé en haut, comme un rideau ouvert en journée : le caisson
+ * d'enroulement, les deux coulisses latérales, et quelques lames encore
+ * visibles sous le caisson.
+ */
+function RideauMetallique({
+  largeur,
+  position,
+}: {
+  largeur: number;
+  position: [number, number, number];
+}) {
+  const hauteur = 4.2;
+  const lames = 5;
+
+  return (
+    <group position={position}>
+      {/* Le caisson d'enroulement. */}
+      <mesh position={[0, hauteur + 0.35, 0]} castShadow>
+        <boxGeometry args={[0.7, 0.7, largeur + 0.6]} />
+        <meshStandardMaterial color="#8d949c" roughness={0.55} metalness={0.4} />
+      </mesh>
+      {/* Les coulisses de part et d'autre. */}
+      {[-1, 1].map((c) => (
+        <mesh key={c} position={[0, hauteur / 2, (c * largeur) / 2]} castShadow>
+          <boxGeometry args={[0.28, hauteur, 0.28]} />
+          <meshStandardMaterial color="#7b828a" roughness={0.5} metalness={0.45} />
+        </mesh>
+      ))}
+      {/* Le linteau. */}
+      <mesh position={[0, hauteur, 0]} castShadow>
+        <boxGeometry args={[0.36, 0.22, largeur]} />
+        <meshStandardMaterial color="#7b828a" roughness={0.5} metalness={0.45} />
+      </mesh>
+      {/* Les lames encore pendantes sous le caisson : c'est ce qui fait lire
+          « rideau » plutôt que « cadre de porte ». */}
+      {Array.from({ length: lames }, (_, i) => (
+        <mesh key={i} position={[0, hauteur - 0.12 - i * 0.14, 0]}>
+          <boxGeometry args={[0.1, 0.1, largeur - 0.3]} />
+          <meshStandardMaterial
+            color={i % 2 === 0 ? "#aeb5bc" : "#99a0a8"}
+            roughness={0.45}
+            metalness={0.5}
+          />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
+/**
  * Un rack à DEUX niveaux : le sol et un étage. Pas deux étages au-dessus du
  * sol — c'est l'erreur de lecture que la description prenait soin d'écarter,
  * et elle doublerait la hauteur apparente du stockage.
@@ -169,15 +242,20 @@ function Rack({
   profondeur,
   sens,
   visible,
+  charge = false,
 }: {
   depart: [number, number];
   longueur: number;
   profondeur: number;
   sens: "longueur" | "largeur";
   visible: boolean;
+  /** Racks chargés : « ils sont toujours pleins ». Un rack vide est un
+   *  dépôt au repos, et ce serait faux. */
+  charge?: boolean;
 }) {
   const montants = useRef<InstancedMesh>(null);
   const lisses = useRef<InstancedMesh>(null);
+  const colis = useRef<InstancedMesh>(null);
 
   const plan = useMemo(() => {
     const h = PENNE.racks.hauteur.valeur;
@@ -207,8 +285,33 @@ function Rack({
         posLisses.push([x, y, z]);
       }
     }
-    return { posMontants, posLisses, h, pas: longueur / n };
-  }, [depart, longueur, profondeur, sens]);
+    // LA MARCHANDISE : canapés et matelas, un par travée et par niveau. Le
+    // volume est volontairement large et bas — ce ne sont pas des cartons, et
+    // des petits colis donneraient une mauvaise idée de l'encombrement.
+    const posColis: { p: [number, number, number]; e: number }[] = [];
+    if (charge) {
+      for (const [niveau, y] of [
+        [0, 0.95],
+        [1, PENNE.racks.hauteurPremierNiveau.valeur + 1.05],
+      ] as const) {
+        for (let i = 0; i < n; i += 1) {
+          const t = ((i + 0.5) * longueur) / n;
+          const [x, z] =
+            sens === "longueur"
+              ? [depart[0] + t, depart[1] + profondeur / 2]
+              : [depart[0] + profondeur / 2, depart[1] + t];
+          posColis.push({
+            p: [x, y, z],
+            // Une variation déterministe de hauteur : des charges toutes
+            // identiques trahiraient la simulation.
+            e: 0.82 + ((i * 7 + niveau * 3) % 5) / 10,
+          });
+        }
+      }
+    }
+
+    return { posMontants, posLisses, posColis, h, pas: longueur / n };
+  }, [charge, depart, longueur, profondeur, sens]);
 
   useEffect(() => {
     const m = montants.current;
@@ -230,7 +333,22 @@ function Rack({
     });
     m.instanceMatrix.needsUpdate = true;
     l.instanceMatrix.needsUpdate = true;
-  }, [plan, sens]);
+
+    const c = colis.current;
+    if (c) {
+      plan.posColis.forEach((item, i) => {
+        pivot.position.set(item.p[0], item.p[1], item.p[2]);
+        pivot.rotation.set(0, sens === "longueur" ? 0 : Math.PI / 2, 0);
+        pivot.scale.set(plan.pas * 0.86, item.e, profondeur * 0.78);
+        pivot.updateMatrix();
+        c.setMatrixAt(i, pivot.matrix);
+        teinte.set(i % 3 === 0 ? "#7f6a56" : i % 3 === 1 ? "#8d7a63" : "#6f5f4e");
+        c.setColorAt(i, teinte);
+      });
+      c.instanceMatrix.needsUpdate = true;
+      if (c.instanceColor) c.instanceColor.needsUpdate = true;
+    }
+  }, [plan, profondeur, sens]);
 
   if (!visible) return null;
 
@@ -244,6 +362,18 @@ function Rack({
         <boxGeometry args={[1, 0.12, 0.1]} />
         <meshStandardMaterial color={LISSE} roughness={0.65} metalness={0.2} />
       </instancedMesh>
+
+      {plan.posColis.length > 0 && (
+        <instancedMesh
+          ref={colis}
+          args={[undefined, undefined, plan.posColis.length]}
+          castShadow
+          receiveShadow
+        >
+          <boxGeometry args={[1, 1, 1]} />
+          <meshStandardMaterial roughness={0.88} />
+        </instancedMesh>
+      )}
     </group>
   );
 }

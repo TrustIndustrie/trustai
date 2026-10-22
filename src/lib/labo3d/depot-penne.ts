@@ -65,6 +65,20 @@ export const PENNE = {
     hauteur: hypothese(8, "Racks de 6 m plus un dégagement sous toiture."),
   },
 
+  /**
+   * LE QUAI — UN SEUL, et il est confondu avec la porte d'entrée.
+   *
+   * Confirmé par Farouk : pas de quai séparé à La Penne. La même ouverture
+   * sert d'entrée et de quai de chargement, et elle est fermée par un RIDEAU
+   * MÉTALLIQUE (porte à enroulement). C'est une contrainte d'exploitation
+   * forte : tout entre et tout sort par le même point, donc une réception et
+   * une expédition ne peuvent pas se faire en même temps.
+   */
+  quai: {
+    nombre: confirme(1, "Un seul, confondu avec la porte d'entrée."),
+    type: "rideau_metallique" as const,
+  },
+
   entree: {
     // Largeur de la porte principale : inconnue. 6 m laisse passer un
     // transpalette et deux personnes de front, le minimum crédible.
@@ -96,6 +110,13 @@ export const PENNE = {
 
   /** L'allée se mesure entre les FACES des racks, pas entre leurs axes. */
   allee: confirme(5, "Entre faces, pas entre axes."),
+
+  /**
+   * LE TAUX DE REMPLISSAGE — confirmé : « les racks sont toujours pleins ».
+   * La scène doit donc montrer des racks CHARGÉS, pas une structure vide :
+   * un rack vide donne une impression de dépôt au repos, et c'est faux.
+   */
+  remplissage: confirme(1, "« Les racks sont toujours pleins. »"),
 
   racks: {
     hauteur: confirme(6, "Estimée entre 5 et 7 m ; 6 m retenu comme valeur de travail."),
