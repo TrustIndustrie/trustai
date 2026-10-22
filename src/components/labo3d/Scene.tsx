@@ -10,6 +10,7 @@ import { Vehicule } from "./Vehicule";
 import {
   Balisage, Chariot, Eclairage, Magasin, Ouvrier, Sol, Vegetation,
 } from "./Decor";
+import { PenneSurCarte } from "./PenneSurCarte";
 import { Rayonnages } from "./Rayonnages";
 import { SiteFournisseur } from "./SiteFournisseur";
 import { placerFournisseurs } from "@/lib/labo3d/fournisseurs";
@@ -124,6 +125,31 @@ export function Scene({
         const presentes = etat.caisses.filter(
           (c) => c.depot === d.code && (c.etape === "disponible" || c.etape.startsWith("recue")),
         ).length;
+        const anomalies = etat.caisses.filter(
+          (c) => c.depot === d.code && c.anomalie,
+        ).length;
+
+        // LA PENNE N'EST PLUS UNE BOÎTE GÉNÉRIQUE. Son implantation est
+        // connue — rack en L, rack parallèle, allée de 5 m, bloc bureaux,
+        // quai unique à rideau métallique — alors c'est ce bâtiment-là qui
+        // est posé sur la carte, réduit à la taille d'un symbole. Argenteuil
+        // garde la boîte générique tant que personne ne l'a décrit : c'est le
+        // signal honnête qu'on ne le connaît pas encore.
+        if (d.code === "aubagne") {
+          return (
+            <PenneSurCarte
+              key={d.code}
+              nom={d.nom}
+              ouvert={ouverts[d.code]}
+              selectionne={selection?.genre === "depot" && selection.code === d.code}
+              occupation={Math.min(1, presentes / d.capacite)}
+              anomalies={anomalies}
+              onClickBatiment={() => onSelection({ genre: "depot", code: d.code })}
+              onClickToit={() => onBasculerToit(d.code)}
+            />
+          );
+        }
+
         return (
           <Depot
             key={d.code}
@@ -131,9 +157,7 @@ export function Scene({
             ouvert={ouverts[d.code]}
             selectionne={selection?.genre === "depot" && selection.code === d.code}
             occupation={Math.min(1, presentes / d.capacite)}
-            anomalies={
-              etat.caisses.filter((c) => c.depot === d.code && c.anomalie).length
-            }
+            anomalies={anomalies}
             onClickBatiment={() => onSelection({ genre: "depot", code: d.code })}
             onClickToit={() => onBasculerToit(d.code)}
           />
@@ -141,9 +165,11 @@ export function Scene({
       })}
 
       {/* Les travées de rayonnage, montées seulement toit levé. */}
-      {etat.depots.map((d) => (
-        <Rayonnages key={`rayons-${d.code}`} depot={d.code} visible={ouverts[d.code]} />
-      ))}
+      {etat.depots
+        .filter((d) => d.code !== "aubagne")
+        .map((d) => (
+          <Rayonnages key={`rayons-${d.code}`} depot={d.code} visible={ouverts[d.code]} />
+        ))}
 
       {/* Les sites fournisseurs, au nord du dépôt d'entrée. Leur position ne
           dit que le pays — la base n'a pas d'adresse — mais leur couleur dit

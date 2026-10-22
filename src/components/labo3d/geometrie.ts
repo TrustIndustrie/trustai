@@ -47,9 +47,18 @@ export const PLAN: Record<CodeDepot, PlanDepot> = {
   },
   aubagne: {
     centre: [0, 0, ECART],
-    largeur: 22,
-    profondeur: 14,
+    // LES PROPORTIONS SONT CELLES DU VRAI BÂTIMENT : 100 m sur 45, soit un
+    // rapport de 2,2. Le dessin précédent en faisait un carré, ce qui donnait
+    // une fausse idée de la forme du site.
+    //
+    // La TAILLE, elle, reste celle d'une carte : la vue d'ensemble n'est pas
+    // à l'échelle et ne peut pas l'être — sa route fait 86 unités pour 770 km.
+    // Pour les mètres, c'est la page « Dépôt de La Penne » qui fait foi.
+    largeur: 18,
+    profondeur: 40,
     hauteur: 6.5,
+    // Quais au nord : le quai unique et la porte d'entrée font face à la
+    // route qui vient d'Argenteuil.
     orientationQuais: -1,
   },
 };
@@ -93,7 +102,7 @@ export const PLAN_MAGASINS: { nom: string; position: [number, number, number] }[
   // laissés orphelins au milieu du plateau au premier changement d'écartement.
   { nom: "Trust Lisses", position: [-30, 0, -ECART - 8] },
   { nom: "Trust Herblay", position: [30, 0, -ECART - 8] },
-  { nom: "Trust Aubagne", position: [30, 0, ECART + 8] },
+  { nom: "Trust Aubagne", position: [34, 0, ECART + 26] },
 ];
 
 /** La route d'affrètement : d'un quai à l'autre, en ligne droite. */

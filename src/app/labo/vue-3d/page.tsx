@@ -151,6 +151,15 @@ export default function LaboVue3dPage() {
             </>
           )}
         </p>
+        {/* Le lien vers la vue dépôt. Sans lui, la page détaillée n'était
+            atteignable qu'en tapant son adresse — et personne ne tape une
+            adresse devant quelqu'un. */}
+        <a
+          href="/labo/depot-la-penne"
+          className="whitespace-nowrap rounded border border-white/25 px-2 py-0.5 text-[11px] text-slate-200 hover:bg-white/10"
+        >
+          Entrer dans le dépôt de La Penne →
+        </a>
         <a
           href="/dashboard"
           className={`whitespace-nowrap rounded border px-2 py-0.5 text-[11px] ${

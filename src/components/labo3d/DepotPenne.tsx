@@ -29,7 +29,19 @@ const DALLE = "#c9c4ba";
 const MONTANT = "#3f6ea8";
 const LISSE = "#d98324";
 
-export function DepotPenne({ ouvert = true }: { ouvert?: boolean }) {
+export function DepotPenne({
+  ouvert = true,
+  etiquettes = true,
+}: {
+  ouvert?: boolean;
+  /**
+   * Les étiquettes HTML gardent une taille FIXE à l'écran, quelle que soit la
+   * réduction appliquée au bâtiment. Posé sur la carte d'ensemble, le dépôt
+   * se retrouvait donc noyé sous des cartouches plus gros que lui. On les
+   * coupe à cette échelle : elles n'ont de sens que dans la vue dépôt.
+   */
+  etiquettes?: boolean;
+}) {
   const L = PENNE.batiment.longueur.valeur;
   const W = PENNE.batiment.largeur.valeur;
   const H = PENNE.batiment.hauteur.valeur;
@@ -95,12 +107,14 @@ export function DepotPenne({ ouvert = true }: { ouvert?: boolean }) {
               </mesh>
             ))}
             <RideauMetallique largeur={l} position={[0, 0, d]} />
+            {etiquettes && (
             <Html position={[-6.5, 4.6, d]} center zIndexRange={[16, 0]}>
               <div className="pointer-events-none select-none whitespace-nowrap rounded border border-white/20 bg-slate-900/85 px-2 py-1 text-center shadow">
                 <div className="text-[11px] font-medium text-white">Entrée · quai unique</div>
                 <div className="text-[9px] text-slate-400">rideau métallique</div>
               </div>
             </Html>
+            )}
           </group>
         );
       })()}
@@ -153,6 +167,7 @@ export function DepotPenne({ ouvert = true }: { ouvert?: boolean }) {
         <planeGeometry args={[L - 2, PENNE.mobilierMalin.largeur.valeur - 1]} />
         <meshStandardMaterial color="#cfddc8" roughness={1} transparent opacity={0.75} />
       </mesh>
+      {etiquettes && (
       <Html
         position={[L * 0.62, 1.4, W - PENNE.mobilierMalin.largeur.valeur / 2]}
         center
@@ -165,8 +180,9 @@ export function DepotPenne({ ouvert = true }: { ouvert?: boolean }) {
           </div>
         </div>
       </Html>
+      )}
 
-      <BlocBureaux largeurBatiment={W} />
+      <BlocBureaux largeurBatiment={W} etiquettes={etiquettes} />
     </group>
   );
 }
@@ -389,7 +405,13 @@ function Rack({
  * cloisonnement des sanitaires n'est pas connu, ils forment donc un seul
  * volume étiqueté, sans portes imaginaires.
  */
-function BlocBureaux({ largeurBatiment }: { largeurBatiment: number }) {
+function BlocBureaux({
+  largeurBatiment,
+  etiquettes,
+}: {
+  largeurBatiment: number;
+  etiquettes: boolean;
+}) {
   const B = PENNE.bureaux;
   const x0 = B.reculDepuisEntree.valeur;
   const couloirL = B.couloir.longueur.valeur;
@@ -465,12 +487,14 @@ function BlocBureaux({ largeurBatiment }: { largeurBatiment: number }) {
           <planeGeometry args={[largeurTrust, profondeurBureau]} />
           <meshStandardMaterial color="#c3d4ea" roughness={1} />
         </mesh>
+        {etiquettes && (
         <Html position={[x0 + couloirL / 2, 4.2, zMur - 1.6]} center zIndexRange={[15, 0]}>
           <div className="pointer-events-none select-none whitespace-nowrap rounded border border-sky-300/30 bg-slate-900/85 px-2 py-0.5 text-center shadow">
             <div className="text-[11px] font-semibold text-sky-100">Trust Industrie</div>
             <div className="text-[9px] text-sky-200/70">~9 m² · bons de livraison</div>
           </div>
         </Html>
+        )}
       </group>
 
       {/* BUREAU MOBILIER MALIN — à GAUCHE, exactement en face, ~18 m². */}
@@ -486,6 +510,7 @@ function BlocBureaux({ largeurBatiment }: { largeurBatiment: number }) {
           <planeGeometry args={[largeurMM, profondeurBureau]} />
           <meshStandardMaterial color="#cfe0c6" roughness={1} />
         </mesh>
+        {etiquettes && (
         <Html
           position={[x0 + couloirL / 2, 2.6, zMur - couloirW * 2 - 2.6]}
           center
@@ -496,6 +521,7 @@ function BlocBureaux({ largeurBatiment }: { largeurBatiment: number }) {
             <div className="text-[9px] text-emerald-200/70">~18 m²</div>
           </div>
         </Html>
+        )}
       </group>
 
       {/* LES SANITAIRES, au fond du couloir. Un seul volume : leur
@@ -508,11 +534,13 @@ function BlocBureaux({ largeurBatiment }: { largeurBatiment: number }) {
         <planeGeometry args={[2.4, couloirW * 2.4]} />
         <meshStandardMaterial color="#d6d2dd" roughness={1} />
       </mesh>
+      {etiquettes && (
       <Html position={[x0 + couloirL + 3.4, 3.4, zMur - couloirW]} center zIndexRange={[15, 0]}>
         <div className="pointer-events-none select-none whitespace-nowrap rounded border border-white/15 bg-slate-900/80 px-2 py-0.5 text-[10px] text-slate-200 shadow">
           WC · douche · évier
         </div>
       </Html>
+      )}
     </group>
   );
 }
