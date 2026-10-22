@@ -32,8 +32,15 @@ const LISSE = "#d98324";
 export function DepotPenne({
   ouvert = true,
   etiquettes = true,
+  marchandise = true,
 }: {
   ouvert?: boolean;
+  /**
+   * Charge décorative dans les racks. Vraie dans la vue dépôt, où rien
+   * d'autre ne représente le stock ; fausse sur la carte d'ensemble, où ce
+   * sont les vraies caisses qui occupent les alvéoles.
+   */
+  marchandise?: boolean;
   /**
    * Les étiquettes HTML gardent une taille FIXE à l'écran, quelle que soit la
    * réduction appliquée au bâtiment. Posé sur la carte d'ensemble, le dépôt
@@ -127,7 +134,7 @@ export function DepotPenne({
         profondeur={PENNE.rackEnL.profondeur.valeur}
         sens="longueur"
         visible={ouvert}
-        charge
+        charge={marchandise}
       />
       <Rack
         depart={[0, 0]}
@@ -135,7 +142,7 @@ export function DepotPenne({
         profondeur={PENNE.rackEnL.profondeur.valeur}
         sens="largeur"
         visible={ouvert}
-        charge
+        charge={marchandise}
       />
 
       {/* LE RACK PARALLÈLE : même extrémité au fond, départ reculé de 20 m. */}
@@ -145,7 +152,7 @@ export function DepotPenne({
         profondeur={PENNE.rackParallele.profondeur.valeur}
         sens="longueur"
         visible={ouvert}
-        charge
+        charge={marchandise}
       />
 
       {/* L'allée de travail, marquée au sol : c'est elle qui donne l'échelle
@@ -401,6 +408,18 @@ function Rack({
 /**
  * LE BLOC BUREAUX — à l'intérieur du dépôt, à droite quand on entre.
  *
+ * SON ORIENTATION A ÉTÉ CORRIGÉE LE 22 OCTOBRE 2026. Le couloir était dessiné
+ * PARALLÈLE au mur de droite, sa porte tournée vers le fond du dépôt. Farouk :
+ * « le bureau n'est pas dans ce sens-là, la porte d'entrée n'est pas par là,
+ * elle fait face au rack de Trust. » Le couloir court donc PERPENDICULAIREMENT
+ * au mur de droite, et sa porte s'ouvre vers les racks — ce qui est aussi ce
+ * que disait le commentaire d'origine, auquel le dessin ne correspondait pas.
+ *
+ * Il en découle de quel côté est chaque bureau. On entre dos aux racks, face
+ * au mur de droite : la main droite pointe alors vers l'ENTRÉE du bâtiment.
+ * Trust — « porte à droite à mi-couloir » — est donc côté entrée, et Mobilier
+ * Malin, « exactement en face », côté fond.
+ *
  * C'est là que les livreurs viennent chercher leurs bons, et c'est la raison
  * pour laquelle il ne doit PAS être un cube opaque : on montre le couloir, les
  * deux portes qui se font face, et les surfaces annoncées.
@@ -420,27 +439,30 @@ function BlocBureaux({
   plafond: boolean;
 }) {
   const B = PENNE.bureaux;
-  const x0 = B.reculDepuisEntree.valeur;
   const couloirL = B.couloir.longueur.valeur;
   const couloirW = B.couloir.largeur.valeur;
-
-  // Les deux bureaux encadrent le couloir. Leurs surfaces sont connues, leurs
-  // proportions non : on fixe la profondeur sur le couloir et on en déduit la
-  // largeur, ce qui respecte la surface sans prétendre à la forme.
-  const profondeurBureau = 3.2;
-  const largeurTrust = B.trust.valeur / profondeurBureau;
-  const largeurMM = B.mobilierMalin.valeur / profondeurBureau;
-
-  // Le couloir court perpendiculairement au mur de droite, vers l'intérieur.
-  const zMur = largeurBatiment - 0.4;
   const hauteur = 2.6;
 
-  // L'emprise du bloc : du mur de droite vers l'intérieur, et de l'entrée du
-  // couloir jusqu'au-delà des sanitaires.
-  const xMin = x0 - 0.2;
-  const xMax = x0 + couloirL + 2.8;
-  const zMax = zMur + 0.2;
-  const zMin = zMax - 7.2;
+  // Le mur de droite, face intérieure.
+  const zMur = largeurBatiment - 0.4;
+  // Les sanitaires occupent le fond du couloir, contre ce mur.
+  const sanitairesP = 2.4;
+  const zCouloirFond = zMur - sanitairesP;
+  // …et le couloir court de là vers les racks, sur sa longueur annoncée.
+  const zPorte = zCouloirFond - couloirL;
+
+  // Les deux bureaux prennent leur profondeur sur la longueur du couloir : la
+  // surface est connue, la forme non, et c'est la seule hypothèse qui ne
+  // déforme ni l'une ni l'autre.
+  const largeurTrust = B.trust.valeur / couloirL;
+  const largeurMM = B.mobilierMalin.valeur / couloirL;
+
+  // Le bloc commence à la distance annoncée depuis le mur d'entrée.
+  const xTrust = B.reculDepuisEntree.valeur;
+  const xCouloir = xTrust + largeurTrust;
+  const xMM = xCouloir + couloirW;
+  const xFin = xMM + largeurMM;
+  const milieuCouloir = (zPorte + zCouloirFond) / 2;
 
   // À LA TAILLE D'UN SYMBOLE DE CARTE, LA COULEUR FAIT LE TRAVAIL. Des
   // cloisons crème dans un bâtiment crème ne se distinguaient pas : en mode
@@ -460,46 +482,159 @@ function BlocBureaux({
     </mesh>
   );
 
+  /** Une cloison percée d'une porte, en deux pans. */
+  const cloisonPercee = (
+    axe: "x" | "z",
+    fixe: number,
+    de: number,
+    a: number,
+    porte: number,
+    largeurPorte: number,
+    cle: string,
+  ) => {
+    const pans: [number, number][] = [
+      [de, porte - largeurPorte / 2],
+      [porte + largeurPorte / 2, a],
+    ];
+    return pans.map(([debut, fin], i) => {
+      const longueur = Math.max(0, fin - debut);
+      if (longueur < 0.05) return null;
+      const centre = (debut + fin) / 2;
+      return axe === "x"
+        ? cloison([fixe, hauteur / 2, centre], [0.2, hauteur, longueur], `${cle}-${i}`)
+        : cloison([centre, hauteur / 2, fixe], [longueur, hauteur, 0.2], `${cle}-${i}`);
+    });
+  };
+
   return (
     <group>
-      {/* L'EMPRISE DU BLOC, calculée une fois et partagée par la dalle, les
-          murs et le plafond. Elle était auparavant écrite trois fois avec
-          trois valeurs différentes : la dalle débordait du bâtiment et le
-          plafond ne tombait pas sur ses murs. */}
+      {/* La dalle du bloc, pour qu'il se détache du sol du dépôt. */}
       <mesh
-        position={[(xMin + xMax) / 2, 0.13, (zMin + zMax) / 2]}
+        position={[(xTrust + xFin) / 2, 0.13, (zPorte + zMur) / 2]}
         rotation={[-Math.PI / 2, 0, 0]}
         receiveShadow
       >
-        <planeGeometry args={[xMax - xMin, zMax - zMin]} />
+        <planeGeometry args={[xFin - xTrust, zMur - zPorte]} />
         <meshStandardMaterial color="#d7d2c6" roughness={1} />
       </mesh>
 
-      {/* LES MURS DU BLOC. Sans eux, le bloc n'était qu'un jeu de cloisons
-          posées sur une dalle : à la taille d'un symbole de carte, on ne
-          voyait rien du tout. Avec eux, c'est un bâtiment dans le bâtiment.
+      {/* LA FAÇADE, CÔTÉ RACKS — c'est elle qui porte la porte d'entrée du
+          bloc. Elle fait face au rack de Trust, de l'autre côté de l'allée. */}
+      {cloisonPercee(
+        "z",
+        zPorte,
+        xTrust,
+        xFin,
+        xCouloir + couloirW / 2,
+        couloirW,
+        "facade-racks",
+      )}
 
-          La façade côté dépôt est percée de la porte du couloir : deux pans
-          de part et d'autre, comme pour l'entrée du bâtiment. */}
+      {/* Les deux pignons : côté entrée du bâtiment et côté fond. */}
       {cloison(
-        [xMin, hauteur / 2, (zMin + (zMur - couloirW - couloirW / 2)) / 2],
-        [0.2, hauteur, Math.max(0.2, zMur - couloirW - couloirW / 2 - zMin)],
-        "facade-avant",
+        [xTrust, hauteur / 2, (zPorte + zMur) / 2],
+        [0.2, hauteur, zMur - zPorte],
+        "pignon-entree",
       )}
       {cloison(
-        [xMin, hauteur / 2, (zMur - couloirW + couloirW / 2 + zMax) / 2],
-        [0.2, hauteur, Math.max(0.2, zMax - (zMur - couloirW + couloirW / 2))],
-        "facade-arriere",
-      )}
-      {cloison(
-        [xMax, hauteur / 2, (zMin + zMax) / 2],
-        [0.2, hauteur, zMax - zMin],
+        [xFin, hauteur / 2, (zPorte + zMur) / 2],
+        [0.2, hauteur, zMur - zPorte],
         "pignon-fond",
       )}
-      {cloison(
-        [(xMin + xMax) / 2, hauteur / 2, zMin],
-        [xMax - xMin, hauteur, 0.2],
-        "long-pan",
+
+      {/* LES DEUX CLOISONS DU COULOIR, chacune percée de sa porte à
+          mi-couloir : Trust d'un côté, Mobilier Malin exactement en face. */}
+      {cloisonPercee("x", xCouloir, zPorte, zCouloirFond, milieuCouloir, 0.9, "couloir-trust")}
+      {cloisonPercee("x", xMM, zPorte, zCouloirFond, milieuCouloir, 0.9, "couloir-mm")}
+
+      {/* La cloison des sanitaires, au fond du couloir, percée elle aussi. */}
+      {cloisonPercee(
+        "z",
+        zCouloirFond,
+        xTrust,
+        xFin,
+        xCouloir + couloirW / 2,
+        0.9,
+        "sanitaires",
+      )}
+
+      {/* La porte d'entrée du bloc, entrouverte : elle dit le sens d'usage. */}
+      <mesh
+        position={[xCouloir + 0.1, 1.05, zPorte]}
+        rotation={[0, 0.6, 0]}
+        castShadow
+      >
+        <boxGeometry args={[couloirW * 0.95, 2.1, 0.08]} />
+        <meshStandardMaterial color="#9fb4c4" roughness={0.5} metalness={0.15} />
+      </mesh>
+
+      {/* BUREAU TRUST — à DROITE en entrant dans le couloir, donc côté entrée
+          du bâtiment. ~9 m². */}
+      <mesh
+        position={[(xTrust + xCouloir) / 2, 0.14, milieuCouloir]}
+        rotation={[-Math.PI / 2, 0, 0]}
+      >
+        <planeGeometry args={[largeurTrust, couloirL]} />
+        <meshStandardMaterial color="#c3d4ea" roughness={1} />
+      </mesh>
+      {/* Les trois étiquettes du bloc sont ÉCARTÉES L'UNE DE L'AUTRE : à la
+          verticale, trois cartouches centrés sur trois pièces voisines se
+          recouvrent, puisqu'un cartouche HTML garde sa taille à l'écran quelle
+          que soit la taille de la pièce qu'il désigne. */}
+      {etiquettes && (
+        <Html
+          position={[(xTrust + xCouloir) / 2 - 2.4, 4.6, zPorte + 0.6]}
+          center
+          zIndexRange={[15, 0]}
+        >
+          <div className="pointer-events-none select-none whitespace-nowrap rounded border border-sky-300/30 bg-slate-900/85 px-2 py-0.5 text-center shadow">
+            <div className="text-[11px] font-semibold text-sky-100">Trust Industrie</div>
+            <div className="text-[9px] text-sky-200/70">~9 m² · bons de livraison</div>
+          </div>
+        </Html>
+      )}
+
+      {/* BUREAU MOBILIER MALIN — à GAUCHE, exactement en face, ~18 m². */}
+      <mesh
+        position={[(xMM + xFin) / 2, 0.14, milieuCouloir]}
+        rotation={[-Math.PI / 2, 0, 0]}
+      >
+        <planeGeometry args={[largeurMM, couloirL]} />
+        <meshStandardMaterial color="#cfe0c6" roughness={1} />
+      </mesh>
+      {etiquettes && (
+        <Html
+          position={[(xMM + xFin) / 2 + 2.4, 3.2, zCouloirFond - 0.6]}
+          center
+          zIndexRange={[15, 0]}
+        >
+          <div className="pointer-events-none select-none whitespace-nowrap rounded border border-emerald-300/25 bg-slate-900/85 px-2 py-0.5 text-center shadow">
+            <div className="text-[11px] font-semibold text-emerald-100">Mobilier Malin</div>
+            <div className="text-[9px] text-emerald-200/70">~18 m²</div>
+          </div>
+        </Html>
+      )}
+
+      {/* LES SANITAIRES, au fond du couloir. Un seul volume : leur
+          cloisonnement n'est pas connu, et trois portes imaginaires auraient
+          été une invention. */}
+      <mesh
+        position={[(xTrust + xFin) / 2, 0.14, (zCouloirFond + zMur) / 2]}
+        rotation={[-Math.PI / 2, 0, 0]}
+      >
+        <planeGeometry args={[xFin - xTrust, sanitairesP]} />
+        <meshStandardMaterial color="#d6d2dd" roughness={1} />
+      </mesh>
+      {etiquettes && (
+        <Html
+          position={[(xTrust + xFin) / 2, 2.2, zMur + 2.6]}
+          center
+          zIndexRange={[15, 0]}
+        >
+          <div className="pointer-events-none select-none whitespace-nowrap rounded border border-white/15 bg-slate-900/80 px-2 py-0.5 text-[10px] text-slate-200 shadow">
+            WC · douche · évier
+          </div>
+        </Html>
       )}
 
       {plafond && (
@@ -509,111 +644,20 @@ function BlocBureaux({
               un volume et une couleur à lui : le seul volume froid d'un
               bâtiment ocre, reconnaissable sans étiquette. */}
           <mesh
-            position={[(xMin + xMax) / 2, hauteur + 0.12, (zMin + zMax) / 2]}
+            position={[(xTrust + xFin) / 2, hauteur + 0.12, (zPorte + zMur) / 2]}
             castShadow
             receiveShadow
           >
-            <boxGeometry args={[xMax - xMin, 0.24, zMax - zMin]} />
+            <boxGeometry args={[xFin - xTrust, 0.24, zMur - zPorte]} />
             <meshStandardMaterial color="#5d7da6" roughness={0.75} />
           </mesh>
           {/* L'acrotère : un filet plus clair sur le pourtour. Sans lui, vu de
               dessus, le bloc se confond avec son ombre. */}
-          <mesh position={[(xMin + xMax) / 2, hauteur + 0.3, (zMin + zMax) / 2]}>
-            <boxGeometry args={[xMax - xMin + 0.4, 0.14, zMax - zMin + 0.4]} />
+          <mesh position={[(xTrust + xFin) / 2, hauteur + 0.3, (zPorte + zMur) / 2]}>
+            <boxGeometry args={[xFin - xTrust + 0.4, 0.14, zMur - zPorte + 0.4]} />
             <meshStandardMaterial color="#9db6d1" roughness={0.8} />
           </mesh>
         </group>
-      )}
-
-      {/* Le couloir : deux cloisons parallèles, porte battante côté dépôt. */}
-      {cloison(
-        [x0 + couloirL / 2, hauteur / 2, zMur - couloirW / 2 - 0.1],
-        [couloirL, hauteur, 0.2],
-        "couloir-gauche",
-      )}
-      {cloison(
-        [x0 + couloirL / 2, hauteur / 2, zMur - couloirW / 2 - 0.1 - couloirW],
-        [couloirL, hauteur, 0.2],
-        "couloir-droite",
-      )}
-
-      {/* La porte battante, entrouverte : elle dit le sens d'usage. */}
-      <mesh
-        position={[x0 - 0.1, 1.05, zMur - couloirW]}
-        rotation={[0, -0.5, 0]}
-        castShadow
-      >
-        <boxGeometry args={[0.08, 2.1, couloirW * 0.95]} />
-        <meshStandardMaterial color="#9fb4c4" roughness={0.5} metalness={0.15} />
-      </mesh>
-
-      {/* BUREAU TRUST — à DROITE en entrant dans le couloir, ~9 m². */}
-      <group>
-        {cloison(
-          [x0 + couloirL / 2, hauteur / 2, zMur - 0.1],
-          [largeurTrust, hauteur, 0.2],
-          "trust-fond",
-        )}
-        <mesh
-          position={[x0 + couloirL / 2, 0.14, zMur - profondeurBureau / 2]}
-          rotation={[-Math.PI / 2, 0, 0]}
-        >
-          <planeGeometry args={[largeurTrust, profondeurBureau]} />
-          <meshStandardMaterial color="#c3d4ea" roughness={1} />
-        </mesh>
-        {etiquettes && (
-        <Html position={[x0 + couloirL / 2, 4.2, zMur - 1.6]} center zIndexRange={[15, 0]}>
-          <div className="pointer-events-none select-none whitespace-nowrap rounded border border-sky-300/30 bg-slate-900/85 px-2 py-0.5 text-center shadow">
-            <div className="text-[11px] font-semibold text-sky-100">Trust Industrie</div>
-            <div className="text-[9px] text-sky-200/70">~9 m² · bons de livraison</div>
-          </div>
-        </Html>
-        )}
-      </group>
-
-      {/* BUREAU MOBILIER MALIN — à GAUCHE, exactement en face, ~18 m². */}
-      <group>
-        <mesh
-          position={[
-            x0 + couloirL / 2,
-            0.14,
-            zMur - couloirW * 2 - profondeurBureau / 2,
-          ]}
-          rotation={[-Math.PI / 2, 0, 0]}
-        >
-          <planeGeometry args={[largeurMM, profondeurBureau]} />
-          <meshStandardMaterial color="#cfe0c6" roughness={1} />
-        </mesh>
-        {etiquettes && (
-        <Html
-          position={[x0 + couloirL / 2, 2.6, zMur - couloirW * 2 - 2.6]}
-          center
-          zIndexRange={[15, 0]}
-        >
-          <div className="pointer-events-none select-none whitespace-nowrap rounded border border-emerald-300/25 bg-slate-900/85 px-2 py-0.5 text-center shadow">
-            <div className="text-[11px] font-semibold text-emerald-100">Mobilier Malin</div>
-            <div className="text-[9px] text-emerald-200/70">~18 m²</div>
-          </div>
-        </Html>
-        )}
-      </group>
-
-      {/* LES SANITAIRES, au fond du couloir. Un seul volume : leur
-          cloisonnement n'est pas connu, et trois portes imaginaires auraient
-          été une invention. */}
-      <mesh
-        position={[x0 + couloirL + 1.2, 0.14, zMur - couloirW]}
-        rotation={[-Math.PI / 2, 0, 0]}
-      >
-        <planeGeometry args={[2.4, couloirW * 2.4]} />
-        <meshStandardMaterial color="#d6d2dd" roughness={1} />
-      </mesh>
-      {etiquettes && (
-      <Html position={[x0 + couloirL + 3.4, 3.4, zMur - couloirW]} center zIndexRange={[15, 0]}>
-        <div className="pointer-events-none select-none whitespace-nowrap rounded border border-white/15 bg-slate-900/80 px-2 py-0.5 text-[10px] text-slate-200 shadow">
-          WC · douche · évier
-        </div>
-      </Html>
       )}
     </group>
   );

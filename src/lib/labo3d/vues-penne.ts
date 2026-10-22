@@ -34,8 +34,12 @@ export const VUES_LOCALES = {
   },
   bureaux: {
     nom: "Bloc bureaux",
-    position: [2, 11, 31] as const,
-    cible: [19, 1.2, 42] as const,
+    // DEPUIS LE DÉPÔT, FACE À LA PORTE DU COULOIR. Le couloir ayant été
+    // réorienté — il s'ouvre vers les racks, pas vers le fond — l'ancien
+    // point de vue montrait le bloc par-derrière, c'est-à-dire deux pignons
+    // aveugles.
+    position: [9, 10, 26] as const,
+    cible: [18.6, 1.2, 41] as const,
   },
 } as const;
 

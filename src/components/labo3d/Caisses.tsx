@@ -7,13 +7,11 @@ import type { ThreeEvent } from "@react-three/fiber";
 import { COULEURS_ETAPE, COULEUR_ANOMALIE, zoneDeLEtape } from "@/lib/labo3d/etapes";
 import type { Caisse, EtatScene } from "@/lib/labo3d/types";
 import {
-  avancementAffiche,
   placeDansZone,
   placeHorsSite,
   placeSurRemorque,
+  positionDuVehicule,
   positionSurRoute,
-  trajetDuVehicule,
-  voieDuVehicule,
 } from "./geometrie";
 
 /**
@@ -44,13 +42,9 @@ function cible(
   if (caisse.vehiculeId) {
     const v = etat.vehicules.find((x) => x.id === caisse.vehiculeId);
     if (v) {
-      // Exactement le même trajet que le camion : la caisse ne peut donc pas
-      // flotter à côté de sa remorque.
-      const base = positionSurRoute(
-        trajetDuVehicule(v.role, avancementAffiche(v.progression, temps, circulation)),
-      );
-      const voie = voieDuVehicule(v.id, v.role);
-      return placeSurRemorque([base[0] + voie, base[1], base[2]], caisse.rang);
+      // Exactement le même trajet que le camion — voie et contournement
+      // compris : la caisse ne peut donc pas flotter à côté de sa remorque.
+      return placeSurRemorque(positionDuVehicule(v, temps, circulation), caisse.rang);
     }
   }
 

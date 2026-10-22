@@ -6,6 +6,8 @@ import { RoundedBox } from "@react-three/drei";
 import { Color, Object3D } from "three";
 import type { Group, InstancedMesh } from "three";
 import {
+  CONTOURNEMENT,
+  CONTOURNEMENT_NORD,
   DISTANCE_REELLE_KM,
   DUREE_REELLE_HEURES,
   PLAN,
@@ -35,12 +37,18 @@ const teinte = new Color();
 
 /** Le sol et la route d'affrètement. */
 export function Sol({ nuit = false }: { nuit?: boolean }) {
-  const longueur = ROUTE.arrivee[2] - ROUTE.depart[2];
-  const milieu = (ROUTE.arrivee[2] + ROUTE.depart[2]) / 2;
-  // La chaussée déborde largement : les arrivages fournisseurs et les
-  // tournées circulent au-delà des deux dépôts.
-  const debord = 46;
-  const bandes = Math.max(4, Math.floor((longueur + debord) / 4));
+  // LA CHAUSSÉE DÉBORDE AU NORD, PAS AU SUD.
+  //
+  // Elle débordait des deux côtés, pour laisser passer les arrivages et les
+  // tournées. Au nord c'est toujours vrai. Au sud, le vrai bâtiment de La
+  // Penne fait cent mètres de long : la chaussée lui passait à travers, et
+  // on voyait des camions rouler dans le dépôt. Elle s'arrête donc au quai —
+  // un cul-de-sac, ce qu'il est réellement puisqu'il n'y a qu'une porte.
+  const zNord = CONTOURNEMENT_NORD.zDebut - 2.5;
+  const zSud = ROUTE.arrivee[2] + 2;
+  const longueurVoie = zSud - zNord;
+  const milieu = (zSud + zNord) / 2;
+  const bandes = Math.max(4, Math.floor(longueurVoie / 4));
 
   return (
     <group>
@@ -54,14 +62,65 @@ export function Sol({ nuit = false }: { nuit?: boolean }) {
 
       {/* La route : c'est elle qui raconte l'affrètement Argenteuil → La Penne. */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.02, milieu]} receiveShadow>
-        <planeGeometry args={[ROUTE.largeur + 3.6, longueur + debord]} />
+        <planeGeometry args={[ROUTE.largeur + 3.6, longueurVoie]} />
+        <meshStandardMaterial color={BITUME} roughness={0.95} />
+      </mesh>
+
+      {/* LA VOIE DE CONTOURNEMENT, à l'est du dépôt de La Penne : c'est par
+          elle que les tournées du Sud rejoignent le magasin d'Aubagne, au lieu
+          de traverser le bâtiment. */}
+      <mesh
+        rotation={[-Math.PI / 2, 0, 0]}
+        position={[
+          CONTOURNEMENT.x,
+          0.02,
+          (CONTOURNEMENT.zDebut + CONTOURNEMENT.zFin) / 2,
+        ]}
+        receiveShadow
+      >
+        <planeGeometry args={[5, CONTOURNEMENT.zFin - CONTOURNEMENT.zDebut + 5]} />
+        <meshStandardMaterial color={BITUME} roughness={0.95} />
+      </mesh>
+      {/* Le raccordement : de la chaussée principale à la voie, devant le
+          quai. Sans lui, la voie partait de nulle part. */}
+      <mesh
+        rotation={[-Math.PI / 2, 0, 0]}
+        position={[CONTOURNEMENT.x / 2, 0.02, CONTOURNEMENT.zDebut]}
+        receiveShadow
+      >
+        <planeGeometry args={[CONTOURNEMENT.x + 5, 5]} />
+        <meshStandardMaterial color={BITUME} roughness={0.95} />
+      </mesh>
+
+      {/* LA VOIE DU NORD, à l'ouest d'Argenteuil : les arrivages fournisseurs
+          et les tournées du Nord la prennent au lieu de traverser le dépôt. */}
+      <mesh
+        rotation={[-Math.PI / 2, 0, 0]}
+        position={[
+          CONTOURNEMENT_NORD.x,
+          0.02,
+          (CONTOURNEMENT_NORD.zDebut + CONTOURNEMENT_NORD.zFin) / 2,
+        ]}
+        receiveShadow
+      >
+        <planeGeometry
+          args={[5, Math.abs(CONTOURNEMENT_NORD.zDebut - CONTOURNEMENT_NORD.zFin) + 5]}
+        />
+        <meshStandardMaterial color={BITUME} roughness={0.95} />
+      </mesh>
+      <mesh
+        rotation={[-Math.PI / 2, 0, 0]}
+        position={[CONTOURNEMENT_NORD.x / 2, 0.02, CONTOURNEMENT_NORD.zDebut]}
+        receiveShadow
+      >
+        <planeGeometry args={[Math.abs(CONTOURNEMENT_NORD.x) + 5, 5]} />
         <meshStandardMaterial color={BITUME} roughness={0.95} />
       </mesh>
       {Array.from({ length: bandes }, (_, i) => (
         <mesh
           key={i}
           rotation={[-Math.PI / 2, 0, 0]}
-          position={[0, 0.03, ROUTE.depart[2] - debord / 2 + i * 4]}
+          position={[0, 0.03, zNord + i * 4]}
         >
           <planeGeometry args={[0.22, 1.8]} />
           <meshStandardMaterial color="#d9d4c4" roughness={0.9} />
@@ -76,7 +135,7 @@ export function Sol({ nuit = false }: { nuit?: boolean }) {
           position={[c * (ROUTE.largeur / 2 + 1.9), 0.09, milieu]}
           receiveShadow
         >
-          <boxGeometry args={[0.45, 0.18, longueur + debord]} />
+          <boxGeometry args={[0.45, 0.18, longueurVoie]} />
           <meshStandardMaterial color="#b9b4aa" roughness={1} />
         </mesh>
       ))}

@@ -15,6 +15,7 @@ import { Rayonnages } from "./Rayonnages";
 import { SiteFournisseur } from "./SiteFournisseur";
 import { placerFournisseurs } from "@/lib/labo3d/fournisseurs";
 import { PLAN, PLAN_MAGASINS, PALETTES } from "./geometrie";
+import { zoneDeLEtape } from "@/lib/labo3d/etapes";
 import type { CodeDepot, EtatScene, Selection } from "@/lib/labo3d/types";
 
 /**
@@ -136,8 +137,14 @@ export function Scene({
         // garde la boîte générique tant que personne ne l'a décrit : c'est le
         // signal honnête qu'on ne le connaît pas encore.
         if (d.code === "aubagne") {
+          // Les caisses logées dans les racks : le garnissage décoratif
+          // reprend après elles, alvéole par alvéole.
+          const stockees = etat.caisses.filter(
+            (c) => c.depot === d.code && zoneDeLEtape(c.etape) === "stockage",
+          ).length;
           return (
             <PenneSurCarte
+              stockees={stockees}
               key={d.code}
               nom={d.nom}
               ouvert={ouverts[d.code]}

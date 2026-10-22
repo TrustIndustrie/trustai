@@ -1,5 +1,6 @@
-import type { CodeDepot } from "@/lib/labo3d/types";
+import type { CodeDepot, Vehicule } from "@/lib/labo3d/types";
 import type { Zone } from "@/lib/labo3d/etapes";
+import { PENNE, abscissesRacks } from "@/lib/labo3d/depot-penne";
 
 /**
  * LABORATOIRE 3D — le plan du plateau.
@@ -100,8 +101,11 @@ export const PALETTES: Record<CodeDepot, Palette> = {
 export const PLAN_MAGASINS: { nom: string; position: [number, number, number] }[] = [
   // Les magasins suivent leur dépôt : les déplacer séparément les aurait
   // laissés orphelins au milieu du plateau au premier changement d'écartement.
-  { nom: "Trust Lisses", position: [-30, 0, -ECART - 8] },
-  { nom: "Trust Herblay", position: [30, 0, -ECART - 8] },
+  // Au NORD du bâtiment, pas à mi-hauteur de ses murs : leur bretelle
+  // traversait sinon le dépôt d'Argenteuil, qui fait dix-huit unités de
+  // profondeur depuis son centre.
+  { nom: "Trust Lisses", position: [-30, 0, -ECART - 16] },
+  { nom: "Trust Herblay", position: [30, 0, -ECART - 16] },
   { nom: "Trust Aubagne", position: [34, 0, ECART + 26] },
 ];
 
@@ -145,12 +149,124 @@ export function positionSurRoute(t: number): [number, number, number] {
 export function trajetDuVehicule(
   role: "transfert" | "livraison" | "fournisseur",
   progression: number,
+  depart: CodeDepot = "aubagne",
 ): number {
   if (role === "transfert") return progression;
   // L'arrivage vient du nord et entre dans Argenteuil.
   if (role === "fournisseur") return -0.55 + progression * 0.5;
-  // La tournée quitte Aubagne vers le sud.
-  return 1.08 + progression * 0.5;
+  // LA TOURNÉE PART DU DÉPÔT QUI LA CHARGE, ET VA VERS SES MAGASINS.
+  //
+  // Les deux tournées partaient auparavant vers le sud, quel que soit leur
+  // dépôt de départ : celle d'Argenteuil traversait donc tout le plateau pour
+  // aller livrer des magasins qui sont au NORD, et se retrouvait garée devant
+  // La Penne — deux camions au même quai, alors que La Penne n'en a qu'un.
+  if (depart === "argenteuil") return -0.08 - progression * 0.5;
+  return 1.04 + progression * 0.5;
+}
+
+/**
+ * LA VOIE DE CONTOURNEMENT DE LA PENNE.
+ *
+ * Le bâtiment réel fait cent mètres de long : posé sur la carte, il descend
+ * bien plus bas que l'ancienne boîte générique, et la chaussée principale
+ * — qui débordait au sud pour laisser passer les tournées — le traversait de
+ * part en part. On voyait donc des camions rouler DANS le dépôt.
+ *
+ * La chaussée s'arrête désormais au quai : c'est un cul-de-sac, et c'en est
+ * un dans la réalité aussi, puisqu'il n'y a qu'une porte. Les tournées du Sud
+ * sortent du quai, prennent la voie de contournement à l'est du bâtiment, et
+ * rejoignent la bretelle du magasin d'Aubagne.
+ */
+export const CONTOURNEMENT = {
+  /** Abscisse de la voie, à l'est du bâtiment. */
+  x: PLAN.aubagne.centre[0] + PLAN.aubagne.largeur / 2 + 5,
+  /** Du raccordement sur la chaussée principale… */
+  zDebut: PLAN.aubagne.centre[2] - PLAN.aubagne.profondeur / 2 - 4,
+  /** …jusqu'à la bretelle du magasin d'Aubagne. */
+  zFin: PLAN_MAGASINS[2].position[2],
+};
+
+/**
+ * LA MÊME CHOSE AU NORD, POUR ARGENTEUIL.
+ *
+ * Le défaut était identique et plus ancien : la chaussée débordait de
+ * vingt-trois unités au nord du quai, c'est-à-dire À TRAVERS le bâtiment
+ * d'Argenteuil, dont les quais donnent au sud. Les arrivages fournisseurs le
+ * traversaient donc en diagonale sous le toit, où personne ne les voyait.
+ *
+ * Les deux chaussées s'arrêtent maintenant à leur quai, et tout ce qui va
+ * plus loin — arrivages, tournées du Nord — passe par cette voie, à l'ouest.
+ */
+export const CONTOURNEMENT_NORD = {
+  x: PLAN.argenteuil.centre[0] - PLAN.argenteuil.largeur / 2 - 5,
+  /** Au droit du quai : c'est là qu'on quitte la chaussée. */
+  zDebut: PLAN.argenteuil.centre[2] + PLAN.argenteuil.profondeur / 2 + 2,
+  /** Jusqu'au-delà des premières rangées de fournisseurs. */
+  zFin: PLAN.argenteuil.centre[2] - 44,
+};
+
+/**
+ * La position d'un véhicule, voie et contournement compris.
+ *
+ * Ce calcul est fait par le camion ET par la marchandise qu'il porte : il
+ * vit ici seulement, sans quoi la caisse finit par flotter à côté de sa
+ * remorque — c'est déjà arrivé une fois.
+ */
+export function positionDuVehicule(
+  vehicule: Pick<Vehicule, "id" | "role" | "progression" | "depart">,
+  temps: number,
+  circulation: boolean,
+): [number, number, number] {
+  const avancement = avancementAffiche(vehicule.progression, temps, circulation);
+  const t = trajetDuVehicule(vehicule.role, avancement, vehicule.depart);
+  const voie = voieDuVehicule(vehicule.id, vehicule.role);
+  const [x, , z] = positionSurRoute(t);
+
+  // AU-DELÀ DU QUAI DE LA PENNE, ON QUITTE LA CHAUSSÉE PRINCIPALE.
+  // Le trajet de la tournée du Sud vaut t ∈ [1,04 ; 1,54] : on le ramène à
+  // une fraction propre, puis on le découpe en deux temps — la sortie du
+  // quai vers l'est, puis la descente le long du contournement. Un calcul
+  // d'un seul tenant laissait un saut de quelques mètres au raccordement.
+  if (t > 1) {
+    const u = Math.min(1, Math.max(0, (t - 1.04) / 0.5));
+    const quai: [number, number] = [x + voie, ROUTE.arrivee[2] + 2];
+    const entree: [number, number] = [CONTOURNEMENT.x + voie * 0.4, CONTOURNEMENT.zDebut];
+    if (u < 0.2) {
+      const k = u / 0.2;
+      return [
+        quai[0] + (entree[0] - quai[0]) * k,
+        0,
+        quai[1] + (entree[1] - quai[1]) * k,
+      ];
+    }
+    const k = (u - 0.2) / 0.8;
+    return [
+      entree[0],
+      0,
+      entree[1] + (CONTOURNEMENT.zFin - entree[1]) * k,
+    ];
+  }
+
+  // EN DEÇÀ DU QUAI D'ARGENTEUIL, DE MÊME : la chaussée s'arrête, et l'on
+  // prend la voie de l'ouest. Les deux sens partagent ce chemin — l'arrivage
+  // qui descend du nord et la tournée qui y remonte parcourent la même voie,
+  // en sens inverse.
+  if (t < 0) {
+    const u = Math.min(1, -t / 0.55);
+    const quai: [number, number] = [x + voie, CONTOURNEMENT_NORD.zDebut];
+    const entree: [number, number] = [
+      CONTOURNEMENT_NORD.x + voie * 0.4,
+      CONTOURNEMENT_NORD.zDebut,
+    ];
+    if (u < 0.2) {
+      const k = u / 0.2;
+      return [quai[0] + (entree[0] - quai[0]) * k, 0, quai[1]];
+    }
+    const k = (u - 0.2) / 0.8;
+    return [entree[0], 0, entree[1] + (CONTOURNEMENT_NORD.zFin - entree[1]) * k];
+  }
+
+  return [x + voie, 0, z];
 }
 
 /**
@@ -235,6 +351,121 @@ export function rectangleZone(
 }
 
 /**
+ * LA PENNE SUR LA CARTE — passage du repère du dépôt à celui du plateau.
+ *
+ * Le modèle de `DepotPenne` vit en mètres, centré puis tourné d'un quart de
+ * tour : ce passage doit donc être écrit UNE SEULE FOIS, sinon la marchandise
+ * se retrouve à côté du bâtiment qui est censé la contenir.
+ */
+export const ECHELLE_PENNE =
+  PLAN.aubagne.profondeur / PENNE.batiment.longueur.valeur;
+
+export function versLaCartePenne(
+  xLocal: number,
+  yLocal: number,
+  zLocal: number,
+): [number, number, number] {
+  const xc = xLocal - PENNE.batiment.longueur.valeur / 2;
+  const zc = zLocal - PENNE.batiment.largeur.valeur / 2;
+  // Rotation d'un quart de tour : (x, z) → (−z, x). C'est celle qu'applique
+  // `PenneSurCarte` au bâtiment lui-même.
+  return [
+    PLAN.aubagne.centre[0] - zc * ECHELLE_PENNE,
+    yLocal * ECHELLE_PENNE,
+    PLAN.aubagne.centre[2] + xc * ECHELLE_PENNE,
+  ];
+}
+
+/**
+ * LA MARCHANDISE DE LA PENNE EST DANS LES RACKS, PAS PAR TERRE.
+ *
+ * « Les racks sont toujours pleins » : poser quatre-vingts caisses à plat sur
+ * la dalle donnait un dépôt encombré que personne ne reconnaîtrait, et cela
+ * cachait le bâtiment lui-même. Les caisses occupent donc les alvéoles des
+ * deux racks — deux niveaux, le sol et l'étage — dans l'ordre de leur rang.
+ *
+ * Il y a environ cent trente alvéoles : au-delà, on empile à l'étage du
+ * dernier rack plutôt que de déborder sur le sol.
+ */
+export function alveolesPenne(): [number, number, number][] {
+  const ax = abscissesRacks();
+  const racks = [
+    {
+      z: (ax.grandDebut + ax.grandFin) / 2,
+      depart: 0,
+      longueur: PENNE.rackEnL.retourLongitudinal.valeur,
+    },
+    {
+      z: (ax.paralleleDebut + ax.paralleleFin) / 2,
+      depart: PENNE.rackParallele.reculDepart.valeur,
+      longueur: PENNE.rackParallele.longueur.valeur,
+    },
+  ];
+  const travee = PENNE.racks.travee.valeur;
+  const niveaux = [0.95, PENNE.racks.hauteurPremierNiveau.valeur + 1.05];
+
+  const places: [number, number, number][] = [];
+  for (let n = 0; n < niveaux.length; n += 1) {
+    for (let r = 0; r < racks.length; r += 1) {
+      const rack = racks[r];
+      const bandes = Math.max(1, Math.round(rack.longueur / travee));
+      for (let i = 0; i < bandes; i += 1) {
+        places.push(
+          versLaCartePenne(
+            rack.depart + (i + 0.5) * (rack.longueur / bandes),
+            niveaux[n],
+            rack.z,
+          ),
+        );
+      }
+    }
+  }
+  return places;
+}
+
+/** Les dimensions d'une charge d'alvéole, en unités de carte. */
+export const CHARGE_ALVEOLE: [number, number, number] = [
+  PENNE.rackEnL.profondeur.valeur * 0.78 * ECHELLE_PENNE,
+  0.95 * ECHELLE_PENNE,
+  PENNE.racks.travee.valeur * 0.86 * ECHELLE_PENNE,
+];
+
+export function placeDansRacksPenne(rang: number): [number, number, number] {
+  const places = alveolesPenne();
+  const total = places.length;
+  return places[((rang % total) + total) % total];
+}
+
+/**
+ * L'AIRE DE QUAI DE LA PENNE — le seul endroit où la marchandise touche le
+ * sol. Elle est juste derrière la porte unique, entre le bout des racks et la
+ * zone Mobilier Malin : c'est là que se pose ce qui vient d'arriver et ce qui
+ * va partir, puisque tout entre et sort par la même ouverture.
+ */
+function placeSurLeQuaiPenne(zone: Zone, rang: number): [number, number, number] {
+  // Coordonnées du dépôt, en mètres : x depuis le mur d'entrée, z depuis le
+  // mur des racks.
+  const bandes: Record<string, { x: number; z: number }> = {
+    reception: { x: 4, z: 12 },
+    preparation: { x: 4, z: 17 },
+    expedition: { x: 11, z: 12 },
+    stockage: { x: 11, z: 17 },
+  };
+  const base = bandes[zone] ?? bandes.reception;
+  const pas = 2.2;
+  const colonnes = 2;
+  const rangees = 2;
+  const parNiveau = colonnes * rangees;
+  const niveau = Math.min(2, Math.floor(rang / parNiveau));
+  const reste = rang % parNiveau;
+  return versLaCartePenne(
+    base.x + (reste % colonnes) * pas,
+    0.95 + niveau * 1.1,
+    base.z + Math.floor(reste / colonnes) * pas,
+  );
+}
+
+/**
  * Place la caisse de rang `rang` dans une zone : en grille, par piles de
  * deux, avec un pas régulier. C'est ce qui donne l'allure de travées rangées
  * plutôt que d'un tas.
@@ -244,6 +475,16 @@ export function placeDansZone(
   zone: Zone,
   rang: number,
 ): [number, number, number] {
+  // LA PENNE N'A PAS QUATRE ZONES GÉNÉRIQUES : elle a deux racks, une allée,
+  // une zone Mobilier Malin et UNE porte. Sa marchandise suit donc son
+  // implantation réelle, et non le quadrillage qui sert aux dépôts dont on
+  // ne connaît pas le plan.
+  if (depot === "aubagne") {
+    return zone === "stockage"
+      ? placeDansRacksPenne(rang)
+      : placeSurLeQuaiPenne(zone, rang);
+  }
+
   const r = rectangleZone(depot, zone);
   const p = PLAN[depot];
   const pas = 1.6;

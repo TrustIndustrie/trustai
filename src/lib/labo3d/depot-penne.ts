@@ -20,6 +20,17 @@
  *     inférieur, proche de l'entrée : il est à droite lorsqu'on entre.
  *     Supprimer l'ancien petit rack côté entrée. »
  *
+ * PUIS L'ORIENTATION DU BLOC BUREAUX, LE MÊME JOUR.
+ *
+ *   « Le bureau n'est pas dans ce sens-là ; la porte d'entrée n'est pas par
+ *     là, elle fait face au rack de Trust. »
+ *
+ * Le couloir court donc PERPENDICULAIREMENT au mur de droite, sa porte
+ * ouverte vers les racks, et non parallèlement à ce mur comme il était
+ * dessiné. On en déduit de quel côté est chaque bureau : on entre dos aux
+ * racks, la main droite vers l'entrée du bâtiment, donc Trust — « porte à
+ * droite » — est côté entrée et Mobilier Malin côté fond.
+ *
  * C'est cette version qui fait foi ici.
  * ────────────────────────────────────────────────────────────────────────
  *
@@ -152,7 +163,9 @@ export const PENNE = {
       longueur: confirme(5),
       largeur: hypothese(1.8),
     },
-    trust: confirme(9, "En m², porte à DROITE à mi-couloir."),
+    // « À droite » et « à gauche » s'entendent EN ENTRANT DANS LE COULOIR,
+    // c'est-à-dire dos aux racks : Trust est donc côté entrée du bâtiment.
+    trust: confirme(9, "En m², porte à DROITE à mi-couloir, côté entrée."),
     mobilierMalin: confirme(18, "En m², porte à GAUCHE, exactement en face."),
     sanitaires: {
       // Toilettes, douche et évier au fond du couloir. Leur cloisonnement
@@ -183,6 +196,7 @@ export const INCERTITUDES: string[] = [
   "Profondeur des racks et largeur des travées",
   "Taille et position exactes de la porte principale",
   "Largeur du couloir et proportions des bureaux",
+  "Profondeur des sanitaires au fond du couloir",
   "Cloisonnement des sanitaires",
   "Contour exact de la zone Mobilier Malin",
 ];

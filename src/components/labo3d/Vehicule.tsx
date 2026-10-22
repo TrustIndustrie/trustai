@@ -4,12 +4,7 @@ import { useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { RoundedBox, Html } from "@react-three/drei";
 import type { Group } from "three";
-import {
-  avancementAffiche,
-  positionSurRoute,
-  trajetDuVehicule,
-  voieDuVehicule,
-} from "./geometrie";
+import { positionDuVehicule } from "./geometrie";
 import type { Vehicule as VehiculeModele } from "@/lib/labo3d/types";
 
 /**
@@ -62,15 +57,13 @@ export function Vehicule({
   // comprenne qu'ils viennent d'ailleurs ou s'en vont ailleurs.
   useFrame((state) => {
     if (!groupe.current) return;
-    const [x, , z] = positionSurRoute(
-      trajetDuVehicule(
-        modele.role,
-        avancementAffiche(modele.progression, state.clock.elapsedTime, circulation),
-      ),
-    );
-    groupe.current.position.set(x + voieDuVehicule(modele.id, modele.role), 0, z);
-    // Tous les véhicules roulent vers le sud : la cabine est déjà orientée
-    // dans ce sens, aucune rotation n'est nécessaire.
+    const [x, , z] = positionDuVehicule(modele, state.clock.elapsedTime, circulation);
+    groupe.current.position.set(x, 0, z);
+    // LA CABINE REGARDE DANS LE SENS DE LA MARCHE. Les tournées du Nord
+    // remontent vers Lisses et Herblay : les laisser orientées vers le sud
+    // les faisait rouler en marche arrière sur toute leur tournée.
+    groupe.current.rotation.y =
+      modele.role === "livraison" && modele.depart === "argenteuil" ? Math.PI : 0;
   });
 
   // En trafic continu, les SEMIS d'affrètement portent leur numéro en
