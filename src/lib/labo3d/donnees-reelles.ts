@@ -121,9 +121,75 @@ export function fournisseursDepuisLignes(lignes: LigneFournisseur[]): Fournisseu
             ? f.lead_time_days
             : null,
         depot: "argenteuil" as const,
+        origine: "referentiel" as const,
       };
     })
     .sort((a, b) => a.nom.localeCompare(b.nom, "fr"));
+}
+
+/**
+ * LES FOURNISSEURS DU RÉCAPITULATIF, RÉUNIS À CEUX DU RÉFÉRENTIEL.
+ *
+ * Deux listes coexistent dans TRUST AI, et elles ne disent pas la même chose.
+ *
+ *   * `public.suppliers` est un RÉFÉRENTIEL : un nom, un pays, un mode
+ *     logistique, un délai. C'est lui que la scène montrait, et lui seul.
+ *   * le GOOGLE SHEET, lui, porte un nom de fournisseur SUR CHAQUE LIGNE
+ *     (`supplier_label`). La synchronisation le recopie tel quel dans les
+ *     lignes logistiques, sans créer de fiche : un fournisseur peut donc
+ *     livrer cinquante lignes sans exister dans le référentiel.
+ *
+ * La scène ne montrait donc pas « les fournisseurs du Sheet », mais ceux que
+ * quelqu'un avait saisis dans l'écran Fournisseurs. D'où l'impression, juste,
+ * que ce ne sont pas les bons.
+ *
+ * On réunit les deux : le référentiel donne pays, mode et délai quand il
+ * connaît le nom ; les noms qu'il ignore apparaissent quand même, marqués
+ * comme venant du récapitulatif, sans qu'on leur invente ni pays ni flux.
+ *
+ * Le rapprochement se fait sur le nom NORMALISÉ — accents, casse et espaces
+ * ôtés — parce que « Mobilier Éco » et « mobilier eco » sont le même
+ * fournisseur saisi deux fois, et que l'inverse ferait deux sites côte à côte.
+ */
+export function cleFournisseur(nom: string): string {
+  return nom
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function fusionnerFournisseurs(
+  referentiel: Fournisseur[],
+  libelles: (string | null | undefined)[],
+): Fournisseur[] {
+  const connus = new Map<string, Fournisseur>();
+  for (const f of referentiel) connus.set(cleFournisseur(f.nom), f);
+
+  const resultat = [...referentiel];
+  const vus = new Set<string>();
+
+  for (const libelle of libelles) {
+    const nom = String(libelle ?? "").trim();
+    if (nom === "") continue;
+    const cle = cleFournisseur(nom);
+    if (connus.has(cle) || vus.has(cle)) continue;
+    vus.add(cle);
+    resultat.push({
+      // L'identifiant est dérivé du nom : stable d'une lecture à l'autre, donc
+      // la sélection ne saute pas d'un fournisseur à l'autre au rechargement.
+      id: `recap:${cle}`,
+      nom,
+      pays: "Pays non renseigné",
+      mode: null,
+      delaiJours: null,
+      depot: "argenteuil",
+      origine: "recapitulatif",
+    });
+  }
+
+  return resultat.sort((a, b) => a.nom.localeCompare(b.nom, "fr"));
 }
 
 export interface OptionsConversion {

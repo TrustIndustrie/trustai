@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { depotDuLibelle, etatDepuisLignes, joursDepuis } from "./donnees-reelles";
+import {
+  cleFournisseur,
+  depotDuLibelle,
+  etatDepuisLignes,
+  fournisseursDepuisLignes,
+  fusionnerFournisseurs,
+  joursDepuis,
+} from "./donnees-reelles";
 import { zoneDeLEtape } from "./etapes";
 import type { LogisticsLineRow } from "@/lib/types";
 
@@ -152,5 +159,74 @@ describe("etatDepuisLignes", () => {
     expect(r.etat.caisses).toHaveLength(0);
     expect(r.etat.vehicules).toHaveLength(0);
     expect(r.etat.depots).toHaveLength(2);
+  });
+});
+
+/**
+ * LES DEUX LISTES DE FOURNISSEURS.
+ *
+ * Farouk : « tu n'as pas mis les bons fournisseurs ? ils sont dans le sheet
+ * pourtant. » Il avait raison : la scène ne montrait que le référentiel
+ * `suppliers`, alors que le Google Sheet pose un nom de fournisseur sur
+ * chaque ligne. Ces tests gardent la réunion des deux — et surtout le fait
+ * qu'on n'invente rien sur ceux que le référentiel ignore.
+ */
+describe("réunion du référentiel et du récapitulatif", () => {
+  const referentiel = fournisseursDepuisLignes([
+    {
+      id: "s-1",
+      name: "Mobilier Éco",
+      country: "France",
+      logistics: "retrait_trust",
+      lead_time_days: 12,
+      active: true,
+    },
+  ]);
+
+  it("garde les fournisseurs du référentiel avec leurs informations", () => {
+    const f = fusionnerFournisseurs(referentiel, []);
+    expect(f).toHaveLength(1);
+    expect(f[0].origine).toBe("referentiel");
+    expect(f[0].mode).toBe("retrait_trust");
+    expect(f[0].delaiJours).toBe(12);
+  });
+
+  it("ajoute les noms qui n'apparaissent que dans le récapitulatif", () => {
+    const f = fusionnerFournisseurs(referentiel, ["Sofas Porto", "Mobilier Éco"]);
+    expect(f.map((x) => x.nom)).toEqual(["Mobilier Éco", "Sofas Porto"]);
+    const ajoute = f.find((x) => x.nom === "Sofas Porto")!;
+    expect(ajoute.origine).toBe("recapitulatif");
+  });
+
+  it("n'invente ni pays, ni mode, ni délai pour ceux-là", () => {
+    const [ajoute] = fusionnerFournisseurs([], ["Sofas Porto"]);
+    expect(ajoute.mode).toBeNull();
+    expect(ajoute.delaiJours).toBeNull();
+    expect(ajoute.pays).toBe("Pays non renseigné");
+  });
+
+  it("rapproche les noms malgré accents, casse et espaces en trop", () => {
+    const f = fusionnerFournisseurs(referentiel, ["  mobilier  eco "]);
+    expect(f).toHaveLength(1);
+    expect(f[0].origine).toBe("referentiel");
+  });
+
+  it("ne crée pas deux sites pour le même nom écrit deux fois", () => {
+    const f = fusionnerFournisseurs([], ["Sofas Porto", "SOFAS PORTO", "Sofas  Porto"]);
+    expect(f).toHaveLength(1);
+  });
+
+  it("ignore les lignes sans fournisseur plutôt que d'en créer un vide", () => {
+    expect(fusionnerFournisseurs([], [null, undefined, "", "   "])).toHaveLength(0);
+  });
+
+  it("donne un identifiant stable, pour que la sélection ne saute pas", () => {
+    const une = fusionnerFournisseurs([], ["Sofas Porto"]);
+    const deux = fusionnerFournisseurs([], ["Sofas Porto"]);
+    expect(une[0].id).toBe(deux[0].id);
+  });
+
+  it("normalise ce qu'il faut, et rien de plus", () => {
+    expect(cleFournisseur(" Mobilier  Éco ")).toBe("mobilier eco");
   });
 });

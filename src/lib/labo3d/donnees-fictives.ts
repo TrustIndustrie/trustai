@@ -113,6 +113,7 @@ const FOURNISSEURS_FICTIFS: Fournisseur[] = FOURNISSEURS.map((nom, i) => ({
   mode: MODES_FICTIFS[i % MODES_FICTIFS.length],
   delaiJours: 3 + ((i * 5) % 18),
   depot: "argenteuil",
+  origine: "referentiel",
 }));
 
 const REPARTITION: { etape: Etape; nombre: number }[] = [

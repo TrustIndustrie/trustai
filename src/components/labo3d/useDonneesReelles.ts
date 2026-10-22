@@ -8,6 +8,7 @@ import type { LogisticsLineRow } from "@/lib/types";
 import {
   etatDepuisLignes,
   fournisseursDepuisLignes,
+  fusionnerFournisseurs,
   type LigneFournisseur,
   type SceneReelle,
 } from "@/lib/labo3d/donnees-reelles";
@@ -88,14 +89,23 @@ export function useDonneesReelles(actif: boolean) {
       // Les fournisseurs, en lecture seule et sans faire échouer la scène :
       // une table inaccessible ne doit pas priver l'utilisateur de la
       // marchandise, qui est l'essentiel.
-      let fournisseurs: ReturnType<typeof fournisseursDepuisLignes> = [];
+      let referentiel: ReturnType<typeof fournisseursDepuisLignes> = [];
       if (supabase) {
         const { data } = await supabase
           .from("suppliers")
           .select("id, name, country, logistics, lead_time_days, active");
         if (jeton.current !== monJeton) return;
-        if (data) fournisseurs = fournisseursDepuisLignes(data as LigneFournisseur[]);
+        if (data) referentiel = fournisseursDepuisLignes(data as LigneFournisseur[]);
       }
+      // LES FOURNISSEURS DU RÉCAPITULATIF COMPTENT AUTANT QUE CEUX DU
+      // RÉFÉRENTIEL. Le Google Sheet pose un nom de fournisseur sur chaque
+      // ligne ; la scène ne montrait que la table `suppliers`, c'est-à-dire
+      // ce que quelqu'un avait saisi à la main dans l'écran Fournisseurs. On
+      // réunit les deux, en disant ce qu'on ignore des seconds.
+      const fournisseurs = fusionnerFournisseurs(
+        referentiel,
+        lignes.map((l) => l.supplier_label),
+      );
 
       setEtat({
         phase: "pret",

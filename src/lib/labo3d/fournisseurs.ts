@@ -39,6 +39,21 @@ export const COULEURS_MODE: Record<ModeLogistique, string> = {
   les_deux: "#4a86b8",
 };
 
+/** Le libellé du mode, y compris quand il n'est pas connu. */
+export function libelleDuMode(mode: ModeLogistique | null): string {
+  return mode === null ? "Mode logistique inconnu" : LIBELLES_MODE[mode];
+}
+
+/**
+ * La couleur du mode. Un fournisseur dont on ignore le flux reste GRIS : lui
+ * donner l'ambre ou le vert ferait croire qu'on sait qui transporte.
+ */
+export const COULEUR_MODE_INCONNU = "#8b9096";
+
+export function couleurDuMode(mode: ModeLogistique | null): string {
+  return mode === null ? COULEUR_MODE_INCONNU : COULEURS_MODE[mode];
+}
+
 export function estModeLogistique(v: string): v is ModeLogistique {
   return v === "retrait_trust" || v === "livraison_fournisseur" || v === "les_deux";
 }

@@ -140,14 +140,17 @@ export default function LaboVue3dPage() {
               Laboratoire expérimental — <strong>vraies lignes logistiques, en
               lecture seule</strong>. Une seule fonction serveur est appelée
               (<code>list_logistics_lines</code>) : aucune écriture, aucune
-              décision, aucun envoi, rien dans le Google Sheet. La simulation
-              est désactivée.
+              décision, aucun envoi, rien dans le Google Sheet. Les
+              fournisseurs réunissent le référentiel et les noms portés par
+              les lignes du récapitulatif. La simulation est désactivée.
             </>
           ) : (
             <>
-              Laboratoire expérimental — données entièrement fictives. Aucune
-              connexion à Supabase, aucune écriture, aucun lien avec la
-              production.
+              Laboratoire expérimental — données entièrement fictives.{" "}
+              <strong>Les noms de fournisseurs, de clients et de produits
+              sont inventés</strong> : les vrais n&apos;apparaissent qu&apos;en
+              mode réel. Aucune connexion à Supabase, aucune écriture, aucun
+              lien avec la production.
             </>
           )}
         </p>

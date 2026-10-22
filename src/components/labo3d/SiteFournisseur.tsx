@@ -3,8 +3,8 @@
 import { RoundedBox } from "@react-three/drei";
 import { Cartouche, PlaqueAuSol } from "./Etiquette";
 import {
-  COULEURS_MODE,
-  LIBELLES_MODE,
+  couleurDuMode,
+  libelleDuMode,
   type Fournisseur,
 } from "@/lib/labo3d/fournisseurs";
 
@@ -33,7 +33,7 @@ export function SiteFournisseur({
   onSurvol: (id: string | null) => void;
   onClick: (id: string) => void;
 }) {
-  const couleur = COULEURS_MODE[fournisseur.mode];
+  const couleur = couleurDuMode(fournisseur.mode);
   // « On va chercher » : la marchandise descend vers nous, flèche vers le sud.
   // « Il nous livre » : c'est son camion qui vient, flèche aussi vers le sud —
   // ce qui change, c'est QUI roule, pas le sens. La couleur fait la différence.
@@ -138,9 +138,14 @@ export function SiteFournisseur({
       <Cartouche position={[0, 5.2, 0]} visible={survole} zIndex={15}>
         <div className="text-[11px] font-medium text-white">{fournisseur.nom}</div>
         <div className="text-[9px]" style={{ color: couleur }}>
-          {LIBELLES_MODE[fournisseur.mode]}
+          {libelleDuMode(fournisseur.mode)}
           {fournisseur.delaiJours !== null ? ` · ${fournisseur.delaiJours} j` : ""}
         </div>
+        {fournisseur.origine === "recapitulatif" && (
+          <div className="text-[9px] text-amber-200/70">
+            du récapitulatif · pas de fiche fournisseur
+          </div>
+        )}
       </Cartouche>
     </group>
   );

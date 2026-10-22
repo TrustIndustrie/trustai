@@ -76,10 +76,28 @@ export interface Fournisseur {
   id: string;
   nom: string;
   pays: string;
-  mode: ModeLogistique;
+  /**
+   * Mode logistique, NUL quand on ne le connaît pas.
+   *
+   * C'est le cas des fournisseurs qui n'apparaissent que dans le
+   * récapitulatif : le Google Sheet porte un NOM de fournisseur sur chaque
+   * ligne, pas une fiche. Lui attribuer un mode par défaut reviendrait à
+   * inventer un flux physique — « il nous livre » ou « on va chercher » —
+   * dont personne n'a rien dit.
+   */
+  mode: ModeLogistique | null;
   /** Délai annoncé en jours, nul si le fournisseur ne l'a jamais donné. */
   delaiJours: number | null;
   depot: CodeDepot;
+  /**
+   * D'OÙ VIENT CE FOURNISSEUR.
+   *
+   * `referentiel` : la table `suppliers`, qui porte pays, mode et délai.
+   * `recapitulatif` : son nom apparaît sur des lignes venues du Google Sheet,
+   * mais aucune fiche ne lui correspond. La scène le montre quand même — il
+   * livre réellement de la marchandise — en disant ce qu'on ignore de lui.
+   */
+  origine: "referentiel" | "recapitulatif";
 }
 
 export interface Depot {

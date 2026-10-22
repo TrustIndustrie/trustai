@@ -1,7 +1,7 @@
 "use client";
 
 import { LIBELLES_ETAPE } from "@/lib/labo3d/etapes";
-import { LIBELLES_MODE } from "@/lib/labo3d/fournisseurs";
+import { libelleDuMode } from "@/lib/labo3d/fournisseurs";
 import type { EtatScene, Selection } from "@/lib/labo3d/types";
 
 /**
@@ -216,9 +216,17 @@ export function Panneau({
                 Position schématique : la base ne renseigne ni adresse ni
                 ville, seulement le pays.
               </p>
+              {f.origine === "recapitulatif" && (
+                <p className="mb-2 rounded border border-amber-400/25 bg-amber-400/10 px-2 py-1 text-[12px] leading-relaxed text-amber-100">
+                  Ce nom vient du récapitulatif : il porte des lignes réelles,
+                  mais aucune fiche ne lui correspond dans l&apos;écran
+                  Fournisseurs. Son pays, son mode logistique et son délai sont
+                  donc inconnus — pas inventés.
+                </p>
+              )}
               <div className="divide-y divide-white/5">
                 <Ligne cle="Pays" valeur={f.pays} />
-                <Ligne cle="Logistique" valeur={LIBELLES_MODE[f.mode]} />
+                <Ligne cle="Logistique" valeur={libelleDuMode(f.mode)} />
                 <Ligne
                   cle="Délai annoncé"
                   valeur={f.delaiJours !== null ? `${f.delaiJours} jour(s)` : "non renseigné"}
