@@ -4,7 +4,12 @@ import { useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { RoundedBox, Html } from "@react-three/drei";
 import type { Group } from "three";
-import { positionSurRoute, trajetDuVehicule, voieDuVehicule } from "./geometrie";
+import {
+  avancementAffiche,
+  positionSurRoute,
+  trajetDuVehicule,
+  voieDuVehicule,
+} from "./geometrie";
 import type { Vehicule as VehiculeModele } from "@/lib/labo3d/types";
 
 /**
@@ -26,6 +31,8 @@ interface Props {
   modele: VehiculeModele;
   selectionne: boolean;
   survole: boolean;
+  /** Trafic continu : les camions roulent sans attendre le jour suivant. */
+  circulation: boolean;
   onSurvol: (id: string | null) => void;
   onClick: (id: string) => void;
 }
@@ -39,24 +46,39 @@ function Roue({ x, z }: { x: number; z: number }) {
   );
 }
 
-export function Vehicule({ modele, selectionne, survole, onSurvol, onClick }: Props) {
+export function Vehicule({
+  modele,
+  selectionne,
+  survole,
+  circulation,
+  onSurvol,
+  onClick,
+}: Props) {
   const groupe = useRef<Group>(null);
   const teinte = COULEURS[modele.role];
 
   // Le camion avance le long de la route. Les camions de livraison et les
   // arrivages fournisseurs circulent au-delà des deux dépôts, pour qu'on
   // comprenne qu'ils viennent d'ailleurs ou s'en vont ailleurs.
-  useFrame(() => {
+  useFrame((state) => {
     if (!groupe.current) return;
     const [x, , z] = positionSurRoute(
-      trajetDuVehicule(modele.role, modele.progression),
+      trajetDuVehicule(
+        modele.role,
+        avancementAffiche(modele.progression, state.clock.elapsedTime, circulation),
+      ),
     );
     groupe.current.position.set(x + voieDuVehicule(modele.id, modele.role), 0, z);
     // Tous les véhicules roulent vers le sud : la cabine est déjà orientée
     // dans ce sens, aucune rotation n'est nécessaire.
   });
 
+  // En trafic continu, les SEMIS d'affrètement portent leur numéro en
+  // permanence : c'est l'information que le patron veut suivre des yeux. Les
+  // tournées et les arrivages, eux, restent muets — quatre étiquettes
+  // permanentes sur la même route redeviendraient illisibles.
   const miseEnAvant = selectionne || survole;
+  const numeroPermanent = circulation && modele.role === "transfert";
 
   return (
     <group
@@ -143,7 +165,7 @@ export function Vehicule({ modele, selectionne, survole, onSurvol, onClick }: Pr
       {/* L'étiquette n'apparaît qu'au survol ou à la sélection : cinq
           étiquettes permanentes sur une même route se chevauchent et
           masquent la scène. */}
-      {miseEnAvant && (
+      {(miseEnAvant || numeroPermanent) && (
         <Html position={[0, 3.8, 0]} center zIndexRange={[18, 0]}>
           <div className="pointer-events-none select-none whitespace-nowrap rounded border border-white/20 bg-slate-900/85 px-2 py-0.5 text-[11px] font-medium text-white shadow-lg">
             {modele.immatriculation} · {modele.caisses} caisse(s)

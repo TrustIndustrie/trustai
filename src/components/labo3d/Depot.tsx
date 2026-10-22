@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useFrame } from "@react-three/fiber";
 import { RoundedBox, Html } from "@react-three/drei";
 import type { Group } from "three";
@@ -45,8 +45,45 @@ export function Depot({
   const p = PLAN[modele.code];
   // Chaque site a sa teinte : deux dépôts gris se confondraient.
   const C = PALETTES[modele.code];
+  // Le mur des quais, selon l'orientation du site. Tout ce qui est ACCROCHÉ à
+  // un mur — enseigne, vitrage, portes, auvents — doit disparaître avec lui :
+  // sinon l'écorché laisse une enseigne et des portes flotter en l'air au
+  // milieu du bâtiment.
+  const murDesQuais = p.orientationQuais > 0 ? "mur-sud" : "mur-nord";
   const toitRef = useRef<Group>(null);
   const q = p.orientationQuais;
+
+  // Quels murs sont retirés : ceux dont la normale pointe VERS la caméra.
+  // Recalculé à chaque image, car la caméra tourne librement en azimut.
+  const masques = useRef<Set<string>>(new Set());
+  const [, forcerRendu] = useState(0);
+
+  useFrame(({ camera }) => {
+    if (!ouvert) {
+      if (masques.current.size > 0) {
+        masques.current = new Set();
+        forcerRendu((n) => n + 1);
+      }
+      return;
+    }
+    const prochains = new Set<string>();
+    for (const m of murs) {
+      // Produit scalaire entre la normale du mur et la direction caméra :
+      // positif, le mur nous fait face et masquerait l'intérieur.
+      const dx = camera.position.x - (p.centre[0] + m.position[0]);
+      const dz = camera.position.z - (p.centre[2] + m.position[2]);
+      if (m.normale[0] * dx + m.normale[2] * dz > 0) prochains.add(m.cle);
+    }
+    // On ne redessine que si l'ensemble a changé : sans cela, un `setState`
+    // par image relancerait React soixante fois par seconde pour rien.
+    const identique =
+      prochains.size === masques.current.size &&
+      Array.from(prochains).every((c) => masques.current.has(c));
+    if (!identique) {
+      masques.current = prochains;
+      forcerRendu((n) => n + 1);
+    }
+  });
 
   // Le toit monte et s'efface en douceur. Une interpolation amortie à chaque
   // image donne un mouvement qui part vite et s'arrête doucement : c'est ce
@@ -58,32 +95,52 @@ export function Depot({
     g.position.y += (cible - g.position.y) * Math.min(1, delta * 4);
   });
 
-  // Les quatre murs de la coque. Épaisseur 0,4 : assez pour accrocher la
-  // lumière sur l'arête, assez peu pour ne pas rogner l'intérieur.
+  /**
+   * Les quatre murs de la coque. Épaisseur 0,4 : assez pour accrocher la
+   * lumière sur l'arête, assez peu pour ne pas rogner l'intérieur.
+   *
+   * PLAN DE COUPE plutôt que murs translucides. La transparence avait trois
+   * défauts qu'on ne voit qu'à l'usage : elle teinte tout ce qu'elle couvre,
+   * elle laisse deviner les arêtes des murs du fond par-dessus la
+   * marchandise, et le moteur doit trier les faces à chaque image. Un écorché
+   * franc — on retire les deux murs côté caméra, on garde les deux autres —
+   * donne une lecture nette, et c'est ainsi que les maquettes d'architecte
+   * montrent un intérieur depuis toujours.
+   *
+   * La caméra est bridée à un quadrant (angle polaire limité, rotation
+   * libre) : les deux murs à retirer sont donc choisis selon l'azimut réel de
+   * la caméra, et non figés une fois pour toutes.
+   */
   const murs = useMemo(() => {
     const e = 0.4;
     const h = p.hauteur;
     return [
       {
         cle: "mur-nord",
+        // La normale sortante : elle dit vers où le mur « regarde », donc
+        // s'il fait face à la caméra ou s'il est au fond.
+        normale: [0, 0, -1] as [number, number, number],
         axe: "x" as const,
         taille: [p.largeur, h, e] as [number, number, number],
         position: [0, h / 2, -p.profondeur / 2] as [number, number, number],
       },
       {
         cle: "mur-sud",
+        normale: [0, 0, 1] as [number, number, number],
         axe: "x" as const,
         taille: [p.largeur, h, e] as [number, number, number],
         position: [0, h / 2, p.profondeur / 2] as [number, number, number],
       },
       {
         cle: "mur-ouest",
+        normale: [-1, 0, 0] as [number, number, number],
         axe: "z" as const,
         taille: [e, h, p.profondeur] as [number, number, number],
         position: [-p.largeur / 2, h / 2, 0] as [number, number, number],
       },
       {
         cle: "mur-est",
+        normale: [1, 0, 0] as [number, number, number],
         axe: "z" as const,
         taille: [e, h, p.profondeur] as [number, number, number],
         position: [p.largeur / 2, h / 2, 0] as [number, number, number],
@@ -130,33 +187,35 @@ export function Depot({
           Un bloc plein paraît identique de l'extérieur mais ne révèle rien
           quand on lève le toit — c'est une coque qu'il faut. */}
       <group onClick={(e) => { e.stopPropagation(); onClickBatiment(); }}>
-        {murs.map((m) => (
-          <RoundedBox
-            key={m.cle}
-            args={m.taille}
-            radius={0.2}
-            smoothness={2}
-            position={m.position}
-            castShadow
-            receiveShadow
-          >
-            <meshStandardMaterial
-              color={selectionne ? "#ffffff" : C.mur}
-              roughness={0.78}
-              metalness={0.04}
-              // Toit levé : les murs deviennent translucides, sinon celui
-              // qui est devant la caméra masque tout l'intérieur.
-              transparent={ouvert}
-              opacity={ouvert ? 0.22 : 1}
-            />
-          </RoundedBox>
-        ))}
+        {murs
+          .filter((m) => !masques.current.has(m.cle))
+          .map((m) => (
+            <RoundedBox
+              key={m.cle}
+              args={m.taille}
+              radius={0.2}
+              smoothness={2}
+              position={m.position}
+              castShadow
+              receiveShadow
+            >
+              {/* Plus aucune transparence : les murs conservés sont PLEINS.
+                  Ceux qui gêneraient sont retirés, pas rendus fantomatiques. */}
+              <meshStandardMaterial
+                color={selectionne ? "#ffffff" : C.mur}
+                roughness={0.78}
+                metalness={0.04}
+              />
+            </RoundedBox>
+          ))}
 
         {/* Soubassement plus sombre : un bâtiment n'est jamais d'une seule
             teinte. Il suit les QUATRE murs et ne traverse pas le bâtiment :
             un seul bloc plein ici remplissait tout le rez-de-chaussée et
             masquait la marchandise une fois le toit levé. */}
-        {murs.map((m) => (
+        {murs
+          .filter((m) => !masques.current.has(m.cle))
+          .map((m) => (
           <mesh
             key={`soubassement-${m.cle}`}
             position={[m.position[0], 0.85, m.position[2]]}
@@ -169,51 +228,43 @@ export function Depot({
                   : [0.56, 1.7, p.profondeur + 0.12]
               }
             />
-            <meshStandardMaterial
-              color={C.murSombre}
-              roughness={0.9}
-              transparent={ouvert}
-              opacity={ouvert ? 0.3 : 1}
-            />
+            <meshStandardMaterial color={C.murSombre} roughness={0.9} />
           </mesh>
         ))}
 
         {/* Bandeau d'enseigne aux couleurs du site, en haut de la façade des
             quais. C'est lui qui identifie le dépôt de loin, avant même qu'on
             lise l'étiquette. */}
-        <mesh position={[0, p.hauteur - 0.55, q * (p.profondeur / 2 + 0.14)]} castShadow>
-          <boxGeometry args={[p.largeur + 0.3, 0.85, 0.2]} />
-          <meshStandardMaterial
-            color={C.bandeau}
-            roughness={0.55}
-            metalness={0.08}
-            transparent={ouvert}
-            opacity={ouvert ? 0.3 : 1}
-          />
-        </mesh>
+        {!masques.current.has(murDesQuais) && (
+          <mesh position={[0, p.hauteur - 0.55, q * (p.profondeur / 2 + 0.14)]} castShadow>
+            <boxGeometry args={[p.largeur + 0.3, 0.85, 0.2]} />
+            <meshStandardMaterial color={C.bandeau} roughness={0.55} metalness={0.08} />
+          </mesh>
+        )}
 
         {/* Bandeau vitré en haut de façade, des deux côtés. */}
-        {[1, -1].map((cote) => (
-          <mesh
-            key={`vitrage-${cote}`}
-            position={[0, p.hauteur - 1.5, cote * (p.profondeur / 2 + 0.08)]}
-          >
-            <boxGeometry args={[p.largeur - 3, 1.1, 0.12]} />
-            <meshStandardMaterial
-              color={VITRAGE}
-              roughness={0.18}
-              metalness={0.35}
-              emissive={VITRAGE}
-              emissiveIntensity={0.14}
-              transparent
-              opacity={ouvert ? 0.25 : 1}
-            />
-          </mesh>
-        ))}
+        {[1, -1]
+          .filter((cote) => !masques.current.has(cote > 0 ? "mur-sud" : "mur-nord"))
+          .map((cote) => (
+            <mesh
+              key={`vitrage-${cote}`}
+              position={[0, p.hauteur - 1.5, cote * (p.profondeur / 2 + 0.08)]}
+            >
+              <boxGeometry args={[p.largeur - 3, 1.1, 0.12]} />
+              <meshStandardMaterial
+                color={VITRAGE}
+                roughness={0.18}
+                metalness={0.35}
+                emissive={VITRAGE}
+                emissiveIntensity={0.14}
+              />
+            </mesh>
+          ))}
       </group>
 
-      {/* Portes de quai, en léger retrait, avec leur auvent. */}
-      {quais.map((quai) => (
+      {/* Portes de quai, en léger retrait, avec leur auvent. Elles partent
+          avec leur mur : une porte sans façade ne tient à rien. */}
+      {!masques.current.has(murDesQuais) && quais.map((quai) => (
         <group key={quai.cle} position={[quai.x, 0, q * (p.profondeur / 2 + 0.05)]}>
           <mesh position={[0, 1.7, 0]}>
             <boxGeometry args={[2.3, 3.4, 0.22]} />

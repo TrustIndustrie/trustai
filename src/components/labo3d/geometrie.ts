@@ -144,6 +144,37 @@ export function trajetDuVehicule(
   return 1.08 + progression * 0.5;
 }
 
+/**
+ * LA ROUTE QUI RACONTE — vitesse du trafic continu, en fraction de trajet par
+ * seconde. 0,045 donne un aller complet en ~22 s : assez lent pour qu'on
+ * suive un camion des yeux, assez vif pour qu'il se passe quelque chose
+ * pendant qu'on commente la scène.
+ */
+export const VITESSE_TRAFIC = 0.045;
+
+/**
+ * L'avancement AFFICHÉ d'un véhicule.
+ *
+ * Hors trafic, c'est l'avancement officiel, celui que la simulation (ou la
+ * base) porte. En trafic continu, on y ajoute une boucle tirée de l'horloge
+ * de la scène, sans toucher à l'état : faire avancer un état soixante fois
+ * par seconde relancerait React pour rien.
+ *
+ * Cette fonction est appelée par le camion ET par la marchandise qu'il porte.
+ * C'est la raison d'être de sa centralisation : deux formules séparées
+ * finiraient par diverger d'une image, et la caisse flotterait à côté de sa
+ * remorque.
+ */
+export function avancementAffiche(
+  progression: number,
+  temps: number,
+  circulation: boolean,
+): number {
+  if (!circulation) return progression;
+  const t = (progression + temps * VITESSE_TRAFIC) % 1;
+  return t < 0 ? t + 1 : t;
+}
+
 /** Décalage latéral, pour que deux véhicules ne se chevauchent pas. */
 export function voieDuVehicule(id: string, role: string): number {
   const base = role === "livraison" ? 1.7 : -1.7;

@@ -33,7 +33,7 @@ const pivot = new Object3D();
 const teinte = new Color();
 
 /** Le sol et la route d'affrètement. */
-export function Sol() {
+export function Sol({ nuit = false }: { nuit?: boolean }) {
   const longueur = ROUTE.arrivee[2] - ROUTE.depart[2];
   const milieu = (ROUTE.arrivee[2] + ROUTE.depart[2]) / 2;
   // La chaussée déborde largement : les arrivages fournisseurs et les
@@ -48,7 +48,7 @@ export function Sol() {
             en diagonale dans les coins. Un plan n'est qu'un quadrilatère, il
             ne coûte rien de le faire large. */}
         <planeGeometry args={[600, 600]} />
-        <meshStandardMaterial color="#a9b49c" roughness={1} />
+        <meshStandardMaterial color={nuit ? "#2d3a33" : "#a9b49c"} roughness={1} />
       </mesh>
 
       {/* La route : c'est elle qui raconte l'affrètement Argenteuil → La Penne. */}
@@ -261,11 +261,13 @@ export function Magasin({
   nom,
   position,
   couleur = "#d8562f",
+  nuit = false,
   onClick,
 }: {
   nom: string;
   position: [number, number, number];
   couleur?: string;
+  nuit?: boolean;
   onClick: (nom: string) => void;
 }) {
   // Le store banne : des lames alternées, pas une texture.
@@ -302,7 +304,7 @@ export function Magasin({
           roughness={0.08}
           metalness={0.55}
           emissive="#ffd9a0"
-          emissiveIntensity={0.3}
+          emissiveIntensity={nuit ? 1.1 : 0.3}
           transparent
           opacity={0.72}
         />
@@ -321,7 +323,11 @@ export function Magasin({
       {/* La lueur intérieure : ce qu'on devine derrière la vitre. */}
       <mesh position={[0, 1.5, 2.3]}>
         <boxGeometry args={[5.4, 2, 0.1]} />
-        <meshStandardMaterial color="#ffe3b8" emissive="#ffcf8a" emissiveIntensity={0.85} />
+        <meshStandardMaterial
+          color="#ffe3b8"
+          emissive="#ffcf8a"
+          emissiveIntensity={nuit ? 2.4 : 0.85}
+        />
       </mesh>
       {/* Deux podiums de présentation, devinés en ombre chinoise. */}
       {[-1.5, 1.5].map((x) => (
@@ -368,7 +374,7 @@ export function Magasin({
           color={couleur}
           roughness={0.45}
           emissive={couleur}
-          emissiveIntensity={0.35}
+          emissiveIntensity={nuit ? 1.6 : 0.35}
         />
       </mesh>
 
@@ -474,7 +480,7 @@ export function Vegetation() {
  * mâts. Ils ne diffusent aucune lumière réelle — une lampe par lampadaire
  * coûterait une passe d'ombre chacune, pour un gain nul en plein jour.
  */
-export function Eclairage() {
+export function Eclairage({ nuit = false }: { nuit?: boolean }) {
   const mats = useRef<InstancedMesh>(null);
   const bras = useRef<InstancedMesh>(null);
   const lampes = useRef<InstancedMesh>(null);
@@ -528,9 +534,9 @@ export function Eclairage() {
       <instancedMesh ref={lampes} args={[undefined, undefined, postes.length]}>
         <boxGeometry args={[0.8, 0.14, 0.4]} />
         <meshStandardMaterial
-          color="#e8e4d8"
+          color={nuit ? "#fff6dd" : "#e8e4d8"}
           emissive="#fff3d0"
-          emissiveIntensity={0.25}
+          emissiveIntensity={nuit ? 2.2 : 0.25}
           roughness={0.4}
         />
       </instancedMesh>

@@ -7,6 +7,7 @@ import type { ThreeEvent } from "@react-three/fiber";
 import { COULEURS_ETAPE, COULEUR_ANOMALIE, zoneDeLEtape } from "@/lib/labo3d/etapes";
 import type { Caisse, EtatScene } from "@/lib/labo3d/types";
 import {
+  avancementAffiche,
   placeDansZone,
   placeHorsSite,
   placeSurRemorque,
@@ -32,7 +33,12 @@ const pivot = new Object3D();
 const teinte = new Color();
 
 /** Position que l'étape de la caisse lui assigne, à cet instant. */
-function cible(caisse: Caisse, etat: EtatScene): [number, number, number] {
+function cible(
+  caisse: Caisse,
+  etat: EtatScene,
+  temps: number,
+  circulation: boolean,
+): [number, number, number] {
   const zone = zoneDeLEtape(caisse.etape);
 
   if (caisse.vehiculeId) {
@@ -40,7 +46,9 @@ function cible(caisse: Caisse, etat: EtatScene): [number, number, number] {
     if (v) {
       // Exactement le même trajet que le camion : la caisse ne peut donc pas
       // flotter à côté de sa remorque.
-      const base = positionSurRoute(trajetDuVehicule(v.role, v.progression));
+      const base = positionSurRoute(
+        trajetDuVehicule(v.role, avancementAffiche(v.progression, temps, circulation)),
+      );
       const voie = voieDuVehicule(v.id, v.role);
       return placeSurRemorque([base[0] + voie, base[1], base[2]], caisse.rang);
     }
@@ -61,13 +69,22 @@ function cible(caisse: Caisse, etat: EtatScene): [number, number, number] {
 
 interface Props {
   etat: EtatScene;
+  /** Trafic continu : la caisse doit suivre son camion, pas le sol. */
+  circulation: boolean;
   selection: string | null;
   survol: string | null;
   onSurvol: (id: string | null) => void;
   onClick: (id: string) => void;
 }
 
-export function Caisses({ etat, selection, survol, onSurvol, onClick }: Props) {
+export function Caisses({
+  etat,
+  circulation,
+  selection,
+  survol,
+  onSurvol,
+  onClick,
+}: Props) {
   const corpsRef = useRef<InstancedMesh>(null);
   const couvercleRef = useRef<InstancedMesh>(null);
   const positions = useRef<Float32Array>(new Float32Array(0));
@@ -99,7 +116,8 @@ export function Caisses({ etat, selection, survol, onSurvol, onClick }: Props) {
     if (corps.instanceColor) corps.instanceColor.needsUpdate = true;
   }, [caisses, selection]);
 
-  useFrame((_, delta) => {
+  useFrame((state, delta) => {
+    const temps = state.clock.elapsedTime;
     const corps = corpsRef.current;
     const couvercle = couvercleRef.current;
     if (!corps || !couvercle) return;
@@ -117,7 +135,7 @@ export function Caisses({ etat, selection, survol, onSurvol, onClick }: Props) {
 
     for (let i = 0; i < nombre; i += 1) {
       const c = caisses[i];
-      const [cx, cy, cz] = cible(c, etat);
+      const [cx, cy, cz] = cible(c, etat, temps, circulation);
 
       if (!initialise.current) {
         pos[i * 3] = cx;
@@ -130,7 +148,14 @@ export function Caisses({ etat, selection, survol, onSurvol, onClick }: Props) {
       }
 
       const mise = c.id === survol || c.id === selection ? 1.14 : 1;
-      const e = echelles[i] * mise;
+      // Une caisse bloquée RESPIRE. Un rouge fixe se perd dans une scène
+      // chargée ; un rouge qui bat attire l'œil exactement là où il faut, et
+      // c'est tout l'intérêt d'une vue d'ensemble. Le battement est lent —
+      // une alerte qui clignote vite devient un bruit qu'on finit par ignorer.
+      const pouls = c.anomalie
+        ? 1 + Math.sin(temps * 2.1 + (Number(c.id.slice(2)) || 0) * 0.6) * 0.07
+        : 1;
+      const e = echelles[i] * mise * pouls;
 
       pivot.position.set(pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2]);
       pivot.rotation.set(0, ((Number(c.id.slice(2)) || 0) % 7) * 0.04, 0);

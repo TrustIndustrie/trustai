@@ -10,6 +10,7 @@ import { Vehicule } from "./Vehicule";
 import {
   Balisage, Chariot, Eclairage, Magasin, Ouvrier, Sol, Vegetation,
 } from "./Decor";
+import { Rayonnages } from "./Rayonnages";
 import { SiteFournisseur } from "./SiteFournisseur";
 import { placerFournisseurs } from "@/lib/labo3d/fournisseurs";
 import { PLAN, PLAN_MAGASINS, PALETTES } from "./geometrie";
@@ -40,6 +41,10 @@ interface Props {
   ouverts: Record<CodeDepot, boolean>;
   /** Mode présentation : la caméra tourne seule, pour commenter sans piloter. */
   presentation: boolean;
+  /** Vue de nuit : les enseignes et les vitrines s'allument. */
+  nuit: boolean;
+  /** Trafic continu sur la route d'affrètement. */
+  circulation: boolean;
   controles: RefObject<ControlesType>;
   onSelection: (s: Selection) => void;
   onSurvol: (id: string | null) => void;
@@ -52,6 +57,8 @@ export function Scene({
   survol,
   ouverts,
   presentation,
+  nuit,
+  circulation,
   controles,
   onSelection,
   onSurvol,
@@ -72,12 +79,20 @@ export function Scene({
           l'ambiance, la clé chaude sculpte les volumes et porte l'ombre, le
           remplissage froid empêche que les faces à l'ombre deviennent des
           trous noirs. Une quatrième passe d'ombre coûterait plus cher que
-          tout ce qu'elle apporterait. */}
-      <hemisphereLight args={["#e6f0ff", "#a79f88", 0.95]} />
+          tout ce qu'elle apporterait.
+
+          DE NUIT, on ne change pas de dispositif : on baisse les mêmes
+          lumières et on laisse les matériaux émissifs — enseignes, vitrines,
+          lampadaires — prendre le dessus. Ajouter une lampe par lampadaire
+          aurait coûté une passe d'ombre chacune pour un gain nul : c'est
+          l'émission, pas l'éclairement, qui fait lire « c'est allumé ». */}
+      <hemisphereLight
+        args={nuit ? ["#24324e", "#1b212b", 0.6] : ["#e6f0ff", "#a79f88", 0.95]}
+      />
       <directionalLight
         position={[38, 52, 26]}
-        color="#fff4e2"
-        intensity={1.9}
+        color={nuit ? "#8ea6c8" : "#fff4e2"}
+        intensity={nuit ? 0.55 : 1.9}
         castShadow
         shadow-mapSize={[2048, 2048]}
         shadow-camera-left={-105}
@@ -88,13 +103,21 @@ export function Scene({
         shadow-camera-far={260}
         shadow-bias={-0.0008}
       />
-      <directionalLight position={[-30, 24, -34]} intensity={0.34} color="#cfdcee" />
+      <directionalLight
+        position={[-30, 24, -34]}
+        intensity={nuit ? 0.12 : 0.34}
+        color="#cfdcee"
+      />
       {/* Contre-jour rasant : il détache les toits du ciel. */}
-      <directionalLight position={[-18, 8, 44]} intensity={0.22} color="#ffe9cc" />
+      <directionalLight
+        position={[-18, 8, 44]}
+        intensity={nuit ? 0.06 : 0.22}
+        color="#ffe9cc"
+      />
 
-      <Sol />
+      <Sol nuit={nuit} />
       <Vegetation />
-      <Eclairage />
+      <Eclairage nuit={nuit} />
       <Balisage />
 
       {etat.depots.map((d) => {
@@ -116,6 +139,11 @@ export function Scene({
           />
         );
       })}
+
+      {/* Les travées de rayonnage, montées seulement toit levé. */}
+      {etat.depots.map((d) => (
+        <Rayonnages key={`rayons-${d.code}`} depot={d.code} visible={ouverts[d.code]} />
+      ))}
 
       {/* Les sites fournisseurs, au nord du dépôt d'entrée. Leur position ne
           dit que le pays — la base n'a pas d'adresse — mais leur couleur dit
@@ -141,12 +169,14 @@ export function Scene({
           nom={m.nom}
           position={m.position}
           couleur={m.position[2] > 0 ? PALETTES.aubagne.bandeau : PALETTES.argenteuil.bandeau}
+          nuit={nuit}
           onClick={(nom) => onSelection({ genre: "magasin", nom })}
         />
       ))}
 
       <Caisses
         etat={etat}
+        circulation={circulation}
         selection={idSelectionne}
         survol={survol}
         onSurvol={onSurvol}
@@ -157,6 +187,7 @@ export function Scene({
         <Vehicule
           key={v.id}
           modele={v}
+          circulation={circulation}
           selectionne={selection?.genre === "vehicule" && selection.id === v.id}
           survole={survol === v.id}
           onSurvol={onSurvol}
@@ -188,7 +219,7 @@ export function Scene({
         scale={190}
         resolution={1536}
         blur={2.4}
-        opacity={0.42}
+        opacity={nuit ? 0.2 : 0.42}
         far={14}
         frames={1}
       />

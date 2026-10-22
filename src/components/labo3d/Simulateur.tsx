@@ -12,6 +12,8 @@ import {
   Database,
   FlaskConical,
   Presentation,
+  Moon,
+  Sun,
 } from "lucide-react";
 import type { CodeDepot } from "@/lib/labo3d/types";
 
@@ -57,6 +59,10 @@ export function Simulateur({
   chargement,
   presentation,
   onPresentation,
+  nuit,
+  onNuit,
+  circulation,
+  onCirculation,
   jour,
   lecture,
   vitesse,
@@ -77,6 +83,10 @@ export function Simulateur({
   chargement: boolean;
   presentation: boolean;
   onPresentation: () => void;
+  nuit: boolean;
+  onNuit: () => void;
+  circulation: boolean;
+  onCirculation: () => void;
   jour: number;
   lecture: boolean;
   vitesse: number;
@@ -188,6 +198,17 @@ export function Simulateur({
       </Bouton>
       <Bouton onClick={onVueGenerale} titre="Recentre la caméra">
         Vue générale
+      </Bouton>
+      <Bouton
+        onClick={onCirculation}
+        actif={circulation}
+        titre="Les camions roulent en continu, numéro de semi affiché"
+      >
+        <Truck size={14} aria-hidden /> Trafic
+      </Bouton>
+      <Bouton onClick={onNuit} actif={nuit} titre="Bascule jour / nuit">
+        {nuit ? <Sun size={14} aria-hidden /> : <Moon size={14} aria-hidden />}
+        {nuit ? "Jour" : "Nuit"}
       </Bouton>
       <Bouton
         onClick={onPresentation}

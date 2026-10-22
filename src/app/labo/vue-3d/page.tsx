@@ -66,6 +66,8 @@ export default function LaboVue3dPage() {
   });
   const [lecture, setLecture] = useState(false);
   const [presentation, setPresentation] = useState(false);
+  const [nuit, setNuit] = useState(false);
+  const [circulation, setCirculation] = useState(false);
   const [vitesse, setVitesse] = useState(1);
   const controles = useRef<ControlesType>(null);
 
@@ -168,8 +170,9 @@ export default function LaboVue3dPage() {
           // l'horizon rend la profondeur que la projection orthographique
           // supprime.
           style={{
-            background:
-              "linear-gradient(180deg,#dbe6f0 0%,#e9eeea 52%,#e4e0d5 100%)",
+            background: nuit
+              ? "linear-gradient(180deg,#0d1424 0%,#16202f 55%,#1d2430 100%)"
+              : "linear-gradient(180deg,#dbe6f0 0%,#e9eeea 52%,#e4e0d5 100%)",
           }}
         >
           <Scene
@@ -178,6 +181,8 @@ export default function LaboVue3dPage() {
             survol={survol}
             ouverts={ouverts}
             presentation={presentation}
+            nuit={nuit}
+            circulation={circulation}
             controles={controles}
             onSelection={setSelection}
             onSurvol={setSurvol}
@@ -296,6 +301,10 @@ export default function LaboVue3dPage() {
         chargement={chargementReel.phase === "chargement"}
         presentation={presentation}
         onPresentation={() => setPresentation((p) => !p)}
+        nuit={nuit}
+        onNuit={() => setNuit((n) => !n)}
+        circulation={circulation}
+        onCirculation={() => setCirculation((c) => !c)}
         jour={etat.jour}
         lecture={lecture}
         vitesse={vitesse}
